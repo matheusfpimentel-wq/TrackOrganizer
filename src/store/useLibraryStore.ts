@@ -11,6 +11,7 @@ import {
 } from "@/types/track";
 import * as api from "@/lib/api";
 import type { PublicConfig } from "@/lib/api";
+import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
 
 const NUMERIC_KEYS: ReadonlySet<TagKey> = new Set<TagKey>(["bpm", "year", "energy"]);
 const AI_FIELD_SET: ReadonlySet<string> = new Set<string>(AI_FIELDS);
@@ -23,12 +24,20 @@ interface WriteSummary {
   backupPath: string;
 }
 
+interface LastWrite {
+  backupPath: string;
+  /** Pre-write tags, to restore the UI on undo. */
+  snapshot: { filePath: string; tags: TrackTags }[];
+}
+
 interface LibraryState {
   folder: string | null;
   rows: TrackRow[];
   scanning: boolean;
   globalError: string | null;
   filter: string;
+  /** Active analysis lens (all / duplicates / no-genre / issues). */
+  lens: Lens;
   /** Selected cells as `rowId::colKey`. */
   selection: Set<string>;
   /** Anchor for shift-range selection. */
@@ -43,9 +52,11 @@ interface LibraryState {
 
   writing: boolean;
   writeResult: WriteSummary | null;
+  lastWrite: LastWrite | null;
 
   scan: () => Promise<void>;
   setFilter: (value: string) => void;
+  setLens: (lens: Lens) => void;
   setCell: (rowId: string, key: TagKey, raw: string) => void;
   clearCells: (keys: Iterable<string>) => void;
   resetRow: (rowId: string) => void;
@@ -66,6 +77,7 @@ interface LibraryState {
   setAiError: (msg: string | null) => void;
 
   writeApproved: () => Promise<void>;
+  undoLastWrite: () => Promise<void>;
   clearWriteResult: () => void;
 }
 
@@ -194,6 +206,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   scanning: false,
   globalError: null,
   filter: "",
+  lens: "all",
   selection: new Set<string>(),
   anchor: null,
 
@@ -206,6 +219,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   writing: false,
   writeResult: null,
+  lastWrite: null,
 
   scan: async () => {
     set({ globalError: null });
@@ -223,6 +237,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setFilter: (value) => set({ filter: value }),
+  setLens: (lens) => set((state) => ({ lens: state.lens === lens ? "all" : lens })),
 
   setCell: (rowId, key, raw) => {
     set((state) => ({
@@ -427,6 +442,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (dirty.length === 0) {
       return;
     }
+    // Pre-write tags (== current originals) let us restore the UI on undo.
+    const snapshot = dirty.map((r) => ({ filePath: r.filePath, tags: { ...r.original } }));
     set({ writing: true, globalError: null, writeResult: null });
     try {
       const outcome = await api.writeTags(
@@ -445,6 +462,33 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           failed: outcome.results.filter((x) => !x.ok).length,
           backupPath: outcome.backupPath,
         },
+        lastWrite: { backupPath: outcome.backupPath, snapshot },
+      }));
+    } catch (err) {
+      set({ writing: false, globalError: String(err) });
+    }
+  },
+
+  undoLastWrite: async () => {
+    const last = get().lastWrite;
+    if (!last) {
+      return;
+    }
+    set({ writing: true, globalError: null });
+    try {
+      await api.undoWrite(last.backupPath);
+      const restored = new Map(last.snapshot.map((s) => [s.filePath, s.tags]));
+      set((state) => ({
+        writing: false,
+        lastWrite: null,
+        rows: state.rows.map((row) => {
+          const tags = restored.get(row.filePath);
+          if (!tags) {
+            return row;
+          }
+          return { ...row, original: { ...tags }, edited: { ...tags }, suggested: null, status: "pristine" };
+        }),
+        writeResult: { ok: last.snapshot.length, failed: 0, backupPath: last.backupPath },
       }));
     } catch (err) {
       set({ writing: false, globalError: String(err) });
@@ -453,6 +497,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   clearWriteResult: () => set({ writeResult: null }),
 }));
+
+/**
+ * Visible rows = text filter + analysis lens. Analysis runs over the FULL
+ * library (so duplicates are detected across everything), then the lens and
+ * text filter narrow the view.
+ */
+export function selectVisible(
+  rows: TrackRow[],
+  filter: string,
+  lens: Lens,
+  analysis: Analysis,
+): TrackRow[] {
+  return applyLens(filterRows(rows, filter), lens, analysis);
+}
+
+export { analyze };
 
 /** Selector: rows passing the current text filter. */
 export function filterRows(rows: TrackRow[], filter: string): TrackRow[] {

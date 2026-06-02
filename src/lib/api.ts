@@ -66,6 +66,14 @@ export async function writeTags(items: WriteRequest[]): Promise<WriteOutcome> {
   return invoke<WriteOutcome>("write_tags", { items });
 }
 
+/** Restore tags from a backup JSON (undo last write). */
+export async function undoWrite(backupPath: string): Promise<WriteOutcome> {
+  if (!isTauri()) {
+    return { backupPath, results: [] };
+  }
+  return invoke<WriteOutcome>("undo_write", { backupPath });
+}
+
 // ---------------------------------------------------------------------------
 // Local config (API key lives only in the backend; never returned to the UI)
 // ---------------------------------------------------------------------------

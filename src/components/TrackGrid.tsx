@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseE
 import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
 import { displayValue } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
-import { filterRows, useLibraryStore } from "@/store/useLibraryStore";
+import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore";
 
 interface EditingCell {
   rowId: string;
@@ -20,6 +20,7 @@ const STATUS_COLOR: Record<TrackRow["status"], string> = {
 export function TrackGrid() {
   const rows = useLibraryStore((s) => s.rows);
   const filter = useLibraryStore((s) => s.filter);
+  const lens = useLibraryStore((s) => s.lens);
   const selection = useLibraryStore((s) => s.selection);
   const anchor = useLibraryStore((s) => s.anchor);
   const setSelection = useLibraryStore((s) => s.setSelection);
@@ -27,7 +28,11 @@ export function TrackGrid() {
   const setCell = useLibraryStore((s) => s.setCell);
   const clearCells = useLibraryStore((s) => s.clearCells);
 
-  const visible = useMemo(() => filterRows(rows, filter), [rows, filter]);
+  const analysis = useMemo(() => analyze(rows), [rows]);
+  const visible = useMemo(
+    () => selectVisible(rows, filter, lens, analysis),
+    [rows, filter, lens, analysis],
+  );
 
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
@@ -196,16 +201,25 @@ export function TrackGrid() {
           </tr>
         </thead>
         <tbody>
-          {visible.map((row, rowIdx) => (
+          {visible.map((row, rowIdx) => {
+            const isDup = analysis.duplicates.has(row.id);
+            const issues = analysis.issues.get(row.id);
+            const rowTitle =
+              issues && issues.length > 0
+                ? `Inconsistências: ${issues.join(", ")}`
+                : (row.error ?? "Clique para selecionar a linha inteira");
+            return (
             <tr key={row.id} className="hover:bg-muted/30">
               <td
                 onClick={() => selectRow(row)}
                 className="sticky left-0 z-10 cursor-pointer select-none border border-border bg-muted px-1 py-1 text-center text-xs text-muted-foreground"
-                title={row.error ?? "Clique para selecionar a linha inteira"}
+                title={rowTitle}
               >
-                <div className="flex items-center justify-center gap-1.5">
+                <div className="flex items-center justify-center gap-1">
                   <span className={cn("inline-block h-2 w-2 rounded-full", STATUS_COLOR[row.status])} />
                   {rowIdx + 1}
+                  {isDup && <span className="font-bold text-suggested" title="Possível duplicata">D</span>}
+                  {issues && issues.length > 0 && <span className="font-bold text-dirty">!</span>}
                 </div>
               </td>
               {COLUMNS.map((col) => {
@@ -254,7 +268,8 @@ export function TrackGrid() {
                 <span className="block max-w-[420px] truncate">{row.fileName}</span>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

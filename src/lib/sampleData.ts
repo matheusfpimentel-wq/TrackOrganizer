@@ -141,6 +141,26 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     },
   },
   {
+    // Duplicate of sample-0006 (same title+artist, different file) + bad year.
+    id: "sample-0009",
+    filePath: "/Music/Dembow/bonbon-2.mp3",
+    fileName: "bonbon-2.mp3",
+    format: "mp3",
+    hasArtwork: false,
+    error: null,
+    tags: {
+      title: "Bonbon",
+      artist: "El Alfa",
+      album: "",
+      genre: "Latin",
+      bpm: 115,
+      key: "7A",
+      year: 1899,
+      energy: null,
+      comment: "",
+    },
+  },
+  {
     id: "sample-0008",
     filePath: "/Music/Corrupt/broken-file.mp3",
     fileName: "broken-file.mp3",

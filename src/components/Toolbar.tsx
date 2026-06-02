@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { filterRows, useLibraryStore } from "@/store/useLibraryStore";
+import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore";
 import { downloadText, rowsToCsv, rowsToTxt } from "@/lib/export";
 
 interface Props {
@@ -23,8 +23,14 @@ export function Toolbar({ onOpenSettings }: Props) {
   const setReviewOpen = useLibraryStore((s) => s.setReviewOpen);
   const writeApproved = useLibraryStore((s) => s.writeApproved);
   const writing = useLibraryStore((s) => s.writing);
+  const lens = useLibraryStore((s) => s.lens);
+  const lastWrite = useLibraryStore((s) => s.lastWrite);
+  const undoLastWrite = useLibraryStore((s) => s.undoLastWrite);
 
-  const visible = useMemo(() => filterRows(rows, filter), [rows, filter]);
+  const visible = useMemo(
+    () => selectVisible(rows, filter, lens, analyze(rows)),
+    [rows, filter, lens],
+  );
   const pendingCount = useMemo(() => rows.filter((r) => r.suggested).length, [rows]);
   const dirtyCount = useMemo(() => rows.filter((r) => r.status === "ready_to_write").length, [rows]);
 
@@ -103,6 +109,18 @@ export function Toolbar({ onOpenSettings }: Props) {
           >
             {writing ? "Gravando…" : `Gravar (${dirtyCount})`}
           </Button>
+
+          {lastWrite && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={writing}
+              onClick={() => void undoLastWrite()}
+              title="Restaura as tags da última gravação a partir do backup"
+            >
+              Desfazer
+            </Button>
+          )}
 
           <div className="mx-1 h-6 w-px bg-border" />
 

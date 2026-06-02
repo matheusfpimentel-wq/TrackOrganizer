@@ -52,3 +52,21 @@ pub fn write_tags(items: Vec<WriteRequest>) -> Result<WriteOutcome, String> {
 
     Ok(WriteOutcome { backup_path: backup_path.to_string_lossy().to_string(), results })
 }
+
+/// Restore tags from a backup JSON produced by `write_tags` (undo last write).
+#[tauri::command]
+pub fn undo_write(backup_path: String) -> Result<WriteOutcome, String> {
+    let text = fs::read_to_string(&backup_path).map_err(|e| format!("ler backup: {e}"))?;
+    let items: Vec<WriteRequest> =
+        serde_json::from_str(&text).map_err(|e| format!("parse backup: {e}"))?;
+
+    let results: Vec<WriteResult> = items
+        .iter()
+        .map(|item| match tags::write_tags(&item.file_path, &item.tags) {
+            Ok(()) => WriteResult { file_path: item.file_path.clone(), ok: true, error: None },
+            Err(e) => WriteResult { file_path: item.file_path.clone(), ok: false, error: Some(e) },
+        })
+        .collect();
+
+    Ok(WriteOutcome { backup_path, results })
+}

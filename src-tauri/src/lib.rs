@@ -14,6 +14,7 @@ pub fn run() {
             commands::scan_folder,
             commands::read_tags,
             commands::write_tags,
+            commands::undo_write,
             config::get_config,
             config::update_config,
             config::clear_api_key,
