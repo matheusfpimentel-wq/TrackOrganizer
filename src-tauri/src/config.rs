@@ -12,30 +12,58 @@ fn default_char_limit() -> u32 {
     50
 }
 
+fn default_provider() -> String {
+    "claude".to_string()
+}
+
+fn default_ollama_url() -> String {
+    "http://localhost:11434".to_string()
+}
+
+fn default_ollama_model() -> String {
+    "llama3.1".to_string()
+}
+
 /// On-disk config, kept in the OS app-config dir. The API key never leaves the
 /// backend: only `PublicConfig` (with `has_api_key`) is exposed to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredConfig {
+    #[serde(default = "default_provider")]
+    pub provider: String,
     #[serde(default)]
     pub api_key: String,
     #[serde(default = "default_model")]
     pub model: String,
     #[serde(default = "default_char_limit")]
     pub char_limit: u32,
+    #[serde(default = "default_ollama_url")]
+    pub ollama_url: String,
+    #[serde(default = "default_ollama_model")]
+    pub ollama_model: String,
 }
 
 impl Default for StoredConfig {
     fn default() -> Self {
-        Self { api_key: String::new(), model: default_model(), char_limit: default_char_limit() }
+        Self {
+            provider: default_provider(),
+            api_key: String::new(),
+            model: default_model(),
+            char_limit: default_char_limit(),
+            ollama_url: default_ollama_url(),
+            ollama_model: default_ollama_model(),
+        }
     }
 }
 
 impl StoredConfig {
     pub fn to_public(&self) -> PublicConfig {
         PublicConfig {
+            provider: self.provider.clone(),
             model: self.model.clone(),
             char_limit: self.char_limit,
             has_api_key: !self.api_key.trim().is_empty(),
+            ollama_url: self.ollama_url.clone(),
+            ollama_model: self.ollama_model.clone(),
         }
     }
 }
@@ -72,13 +100,22 @@ pub fn get_config(app: AppHandle) -> PublicConfig {
 /// Update any subset of the config. Passing an empty/absent `api_key` leaves the
 /// stored key untouched (so the UI never needs to read it back to re-save).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_config(
     app: AppHandle,
+    provider: Option<String>,
     model: Option<String>,
     char_limit: Option<u32>,
     api_key: Option<String>,
+    ollama_url: Option<String>,
+    ollama_model: Option<String>,
 ) -> Result<PublicConfig, String> {
     let mut cfg = load(&app);
+    if let Some(p) = provider {
+        if p == "claude" || p == "ollama" {
+            cfg.provider = p;
+        }
+    }
     if let Some(m) = model {
         if !m.trim().is_empty() {
             cfg.model = m;
@@ -90,6 +127,16 @@ pub fn update_config(
     if let Some(key) = api_key {
         if !key.trim().is_empty() {
             cfg.api_key = key.trim().to_string();
+        }
+    }
+    if let Some(url) = ollama_url {
+        if !url.trim().is_empty() {
+            cfg.ollama_url = url.trim().trim_end_matches('/').to_string();
+        }
+    }
+    if let Some(om) = ollama_model {
+        if !om.trim().is_empty() {
+            cfg.ollama_model = om.trim().to_string();
         }
     }
     save(&app, &cfg)?;

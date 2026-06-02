@@ -106,7 +106,11 @@ pub struct AiResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicConfig {
+    /// "claude" or "ollama".
+    pub provider: String,
     pub model: String,
     pub char_limit: u32,
     pub has_api_key: bool,
+    pub ollama_url: String,
+    pub ollama_model: String,
 }

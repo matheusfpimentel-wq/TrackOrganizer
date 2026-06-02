@@ -3,7 +3,7 @@ use crate::model::{AiRequest, AiResponse, AiSuggestion};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const CLAUDE_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 
 /// Build the system prompt that encodes the curation rules.
@@ -13,8 +13,7 @@ fn system_prompt(char_limit: u32, fields: &[String]) -> String {
     let mut rules = String::from(
         "Você é um curador especialista em metadados para DJs de Open Format, com foco \
 forte em música latina e brasileira. Recebe um LOTE de faixas (JSON) e devolve sugestões \
-de tags via a ferramenta `submit_tags`. Use SEMPRE como contexto: Título + Artista + \
-tags existentes + nome do arquivo.\n\n\
+de tags. Use SEMPRE como contexto: Título + Artista + tags existentes + nome do arquivo.\n\n\
 PRINCÍPIOS GERAIS:\n\
 - Considere o LOTE inteiro para manter CONSISTÊNCIA: se vários itens são do mesmo gênero, \
 use o MESMO rótulo (constância), para permitir Smart Crates/agrupamento funcional.\n\
@@ -61,15 +60,15 @@ inteiro em `energy`. NÃO escreva energia dentro de `comment` (o app cuida disso
     }
 
     rules.push_str(
-        "\nSAÍDA:\n- Chame `submit_tags` com uma entrada por faixa, usando o MESMO `id` \
-recebido. Inclua APENAS os campos solicitados; se não tiver certeza de um campo, omita-o. \
-Não invente dados factuais (ano/álbum).\n",
+        "\nSAÍDA:\n- Devolva uma entrada por faixa, usando o MESMO `id` recebido. Inclua \
+APENAS os campos solicitados; se não tiver certeza de um campo, omita-o. Não invente dados \
+factuais (ano/álbum).\n",
     );
     rules
 }
 
-/// Tool schema constraining the model output to our suggestion shape.
-fn tool_schema(fields: &[String]) -> Value {
+/// JSON schema for the structured output (shared by Claude tool-use & Ollama format).
+fn suggestions_schema(fields: &[String]) -> Value {
     let mut props = serde_json::Map::new();
     props.insert("id".into(), json!({ "type": "string" }));
     if fields.iter().any(|f| f == "title") {
@@ -93,56 +92,55 @@ fn tool_schema(fields: &[String]) -> Value {
         "properties": {
             "suggestions": {
                 "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": props,
-                    "required": ["id"]
-                }
+                "items": { "type": "object", "properties": props, "required": ["id"] }
             }
         },
         "required": ["suggestions"]
     })
 }
 
-/// Call the Claude Messages API for one batch and return parsed suggestions.
-#[tauri::command]
-pub async fn tag_with_ai(app: AppHandle, request: AiRequest) -> Result<AiResponse, String> {
-    let cfg = config::load(&app);
-    if cfg.api_key.trim().is_empty() {
-        return Err("API key não configurada. Abra Configurações e informe a chave.".into());
-    }
-    if request.tracks.is_empty() {
-        return Ok(AiResponse { suggestions: vec![] });
-    }
-
-    let system = system_prompt(request.char_limit, &request.fields);
-    let user_payload =
+fn user_content(request: &AiRequest) -> Result<String, String> {
+    let payload =
         serde_json::to_string(&request.tracks).map_err(|e| format!("serialize tracks: {e}"))?;
+    Ok(format!(
+        "Faixas do lote (JSON). Sugira apenas os campos: {fields}.\n\n{payload}",
+        fields = request.fields.join(", ")
+    ))
+}
 
+/// Parse a `{ "suggestions": [...] }` value into our response shape.
+fn parse_suggestions(obj: &Value) -> Result<AiResponse, String> {
+    let suggestions: Vec<AiSuggestion> =
+        serde_json::from_value(obj.get("suggestions").cloned().unwrap_or(Value::Null))
+            .map_err(|e| format!("parse das sugestões: {e}"))?;
+    Ok(AiResponse { suggestions })
+}
+
+/// Call the Claude Messages API (tool-use) for one batch.
+async fn call_claude(
+    api_key: &str,
+    model: &str,
+    system: String,
+    user: String,
+    schema: Value,
+) -> Result<AiResponse, String> {
     let body = json!({
-        "model": cfg.model,
+        "model": model,
         "max_tokens": 4096,
         "system": system,
         "tools": [{
             "name": "submit_tags",
             "description": "Devolve as tags sugeridas para cada faixa do lote.",
-            "input_schema": tool_schema(&request.fields),
+            "input_schema": schema,
         }],
         "tool_choice": { "type": "tool", "name": "submit_tags" },
-        "messages": [{
-            "role": "user",
-            "content": format!(
-                "Faixas do lote (JSON). Sugira apenas os campos: {fields}.\n\n{payload}",
-                fields = request.fields.join(", "),
-                payload = user_payload
-            )
-        }]
+        "messages": [{ "role": "user", "content": user }]
     });
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(API_URL)
-        .header("x-api-key", cfg.api_key)
+        .post(CLAUDE_URL)
+        .header("x-api-key", api_key)
         .header("anthropic-version", API_VERSION)
         .header("content-type", "application/json")
         .json(&body)
@@ -152,29 +150,90 @@ pub async fn tag_with_ai(app: AppHandle, request: AiRequest) -> Result<AiRespons
 
     let status = resp.status();
     let value: Value = resp.json().await.map_err(|e| format!("resposta inválida: {e}"))?;
-
     if !status.is_success() {
         let msg = value
             .get("error")
             .and_then(|e| e.get("message"))
             .and_then(Value::as_str)
             .unwrap_or("erro desconhecido da API");
-        return Err(format!("API {status}: {msg}"));
+        return Err(format!("Claude API {status}: {msg}"));
     }
 
-    // Find the tool_use block and parse its input into our response shape.
     let content = value.get("content").and_then(Value::as_array).cloned().unwrap_or_default();
     for block in content {
         if block.get("type").and_then(Value::as_str) == Some("tool_use") {
             if let Some(input) = block.get("input") {
-                let suggestions: Vec<AiSuggestion> = serde_json::from_value(
-                    input.get("suggestions").cloned().unwrap_or(Value::Null),
-                )
-                .map_err(|e| format!("parse das sugestões: {e}"))?;
-                return Ok(AiResponse { suggestions });
+                return parse_suggestions(input);
             }
         }
     }
-
     Err("A IA não retornou sugestões estruturadas.".into())
+}
+
+/// Call a local Ollama server (`/api/chat`) with a JSON-schema `format`.
+async fn call_ollama(
+    base_url: &str,
+    model: &str,
+    system: String,
+    user: String,
+    schema: Value,
+) -> Result<AiResponse, String> {
+    let body = json!({
+        "model": model,
+        "stream": false,
+        "format": schema,
+        "options": { "temperature": 0.2 },
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user }
+        ]
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base_url}/api/chat"))
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| {
+            format!("erro ao conectar no Ollama ({base_url}): {e}. O Ollama está rodando? (`ollama serve`)")
+        })?;
+
+    let status = resp.status();
+    let value: Value = resp.json().await.map_err(|e| format!("resposta inválida do Ollama: {e}"))?;
+    if !status.is_success() {
+        let msg = value.get("error").and_then(Value::as_str).unwrap_or("erro desconhecido");
+        return Err(format!("Ollama {status}: {msg}"));
+    }
+
+    let content = value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_str)
+        .ok_or("Ollama não retornou conteúdo.")?;
+    let parsed: Value = serde_json::from_str(content)
+        .map_err(|e| format!("Ollama retornou JSON inválido: {e}"))?;
+    parse_suggestions(&parsed)
+}
+
+/// Tag one batch using the configured provider (Claude or Ollama).
+#[tauri::command]
+pub async fn tag_with_ai(app: AppHandle, request: AiRequest) -> Result<AiResponse, String> {
+    if request.tracks.is_empty() {
+        return Ok(AiResponse { suggestions: vec![] });
+    }
+    let cfg = config::load(&app);
+    let system = system_prompt(request.char_limit, &request.fields);
+    let user = user_content(&request)?;
+    let schema = suggestions_schema(&request.fields);
+
+    if cfg.provider == "ollama" {
+        call_ollama(&cfg.ollama_url, &cfg.ollama_model, system, user, schema).await
+    } else {
+        if cfg.api_key.trim().is_empty() {
+            return Err("API key não configurada. Abra Configurações e informe a chave.".into());
+        }
+        call_claude(&cfg.api_key, &cfg.model, system, user, schema).await
+    }
 }

@@ -11,7 +11,7 @@ Foco em DJ Open Format de Reggaeton: organização cirúrgica de gênero, energi
 
 - **Tauri 2** (shell desktop) + **React 18** + **TypeScript strict** + **Vite** + **Tailwind** (UI estilo shadcn/ui)
 - **Rust** no core, com a crate [`lofty`](https://crates.io/crates/lofty) para ID3v2 / MP4-M4A / FLAC / WAV / AIFF
-- **IA:** API do Claude (`claude-sonnet-4-6`) via `reqwest` no backend, com **tool-use** para saída estruturada. API key em config local — nunca hardcoded nem exposta ao frontend
+- **IA:** dois provedores selecionáveis — **Claude** (API, `claude-sonnet-4-6`, via `reqwest` + tool-use) ou **Ollama** (modelo local, grátis e offline, via `/api/chat` + JSON-schema). API key em config local — nunca hardcoded nem exposta ao frontend
 
 ## Arquitetura de pastas
 
@@ -88,10 +88,19 @@ Comentário** (+ Nome do arquivo, read-only).
 
 > O write-back **nunca** é chamado sem aprovação na UI; o backup viabiliza o *undo*.
 
-## IA (Claude)
+## IA (Claude ou Ollama)
 
-1. Configure a **API key** e o **modelo** na engrenagem (⚙). A key fica no
-   `config.json` do diretório de config do SO, gerida pelo backend.
+Na engrenagem (⚙) escolha o **Provedor**:
+
+- **Claude (API paga):** informe a **API key** ([console.anthropic.com](https://console.anthropic.com))
+  e o **modelo** (ex.: `claude-sonnet-4-6`; `claude-haiku-4-5-20251001` é mais barato e dá conta).
+- **Ollama (local, grátis):** rode `ollama serve`, baixe um modelo (`ollama pull llama3.1`)
+  e aponte a **URL** (default `http://localhost:11434`) e o **modelo**. Tudo roda na sua
+  máquina, sem custo e sem enviar a tracklist para nuvem nenhuma.
+
+Depois:
+
+1. A key/config fica no `config.json` do diretório de config do SO, gerida pelo backend.
 2. Selecione células das colunas **Título / Artista / Gênero / Energia** (estilo Excel)
    e clique **Taggear com IA**. As faixas vão em **lotes de ~20** para a API.
 3. Revise o **diff original → sugerido** e aprove/rejeite por célula ou em lote.
