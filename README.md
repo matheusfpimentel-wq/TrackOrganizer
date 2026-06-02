@@ -86,18 +86,59 @@ Comentário** (+ Nome do arquivo, read-only).
 
 > O write-back **nunca** é chamado sem aprovação na UI; o backup viabiliza o *undo*.
 
-## Como rodar
+## Como rodar (desenvolvimento)
 
 ```bash
 npm install
-npm run tauri dev        # app desktop (requer toolchain Rust + libs do SO)
-# ou só o frontend no navegador:
+npm run tauri dev        # app desktop (requer toolchain Rust + pré-requisitos do SO)
+# ou só o frontend no navegador (usa dados de exemplo):
 npm run dev
 ```
 
-**Dependências de SO (Linux):** Tauri 2 precisa de `webkit2gtk-4.1` e `gtk+-3.0`
-(`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`). Sem elas, o frontend
-e o core em Rust compilam, mas o link final do app desktop não.
+## Build para macOS e Windows
+
+O app é **cross-platform** (Tauri 2). Cada instalador é gerado no respectivo SO.
+
+### Pré-requisitos por plataforma
+
+| SO | Necessário |
+|----|-----------|
+| **macOS** | Xcode Command Line Tools (`xcode-select --install`), Rust, Node 20+ |
+| **Windows** | [Microsoft C++ Build Tools (MSVC)](https://visualstudio.microsoft.com/visual-cpp-build-tools/), [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (já vem no Win 11), Rust, Node 20+ |
+| **Linux** | `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`, `librsvg2-dev`, `build-essential` |
+
+### Build local
+
+```bash
+npm install
+npm run tauri build
+```
+
+Saídas (em `src-tauri/target/release/bundle/`):
+
+- **macOS:** `.app` + `.dmg` (em `macos/` e `dmg/`)
+- **Windows:** `.msi` (WiX) e `*-setup.exe` (NSIS)
+
+> macOS universal (Intel + Apple Silicon):
+> `rustup target add aarch64-apple-darwin x86_64-apple-darwin` e
+> `npm run tauri build -- --target universal-apple-darwin`.
+
+### Build via CI (recomendado para mac + win sem ter as duas máquinas)
+
+O workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) compila nos
+runners nativos `macos-latest` (Intel + Apple Silicon) e `windows-latest`:
+
+- **Run manual** (aba *Actions* → *Build (macOS & Windows)* → *Run workflow*): os
+  instaladores ficam como **artifacts** do run.
+- **Push de tag** `vX.Y.Z`: cria um **draft Release** com os instaladores anexados.
+
+> Para distribuir sem avisos de segurança: **assinar/notarizar** no macOS
+> (Apple Developer ID) e **assinar** no Windows (code-signing cert). Os hooks de
+> assinatura do Tauri/`tauri-action` já estão previstos para quando você tiver os
+> certificados — basta adicionar os secrets.
+
+**Linux (apenas dev neste repositório):** sem as libs GTK/webkit acima, o frontend e o
+core em Rust compilam, mas o link final do app desktop não.
 
 ## Validação feita
 
