@@ -1,4 +1,5 @@
-import type { ScannedTrack } from "@/types/track";
+import type { AiSuggestion, ScannedTrack } from "@/types/track";
+import { applyCharLimit, cleanText, formatTitle } from "@/lib/format";
 
 /**
  * Sample library used only when running outside Tauri (`npm run dev` in a plain
@@ -159,3 +160,66 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     },
   },
 ];
+
+interface MockInput {
+  id: string;
+  title: string;
+  artist: string;
+  genre: string;
+  fileName: string;
+  bpm: number | null;
+}
+
+/** Detect a Remix/Edit/Bootleg/etc. qualifier from the title. */
+function detectVersion(title: string): string | undefined {
+  const m = title.match(/[([]([^()[\]]*(remix|edit|bootleg|mashup|vip|version|club)[^()[\]]*)[)\]]/i);
+  return m?.[1]?.trim();
+}
+
+function guessGenre(haystack: string, current: string): string {
+  const h = haystack.toLowerCase();
+  if (/(bootleg|tech\s*house|insomnia)/.test(h)) return "Tech House";
+  if (/(disclosure|uk garage)/.test(h)) return "UK Garage";
+  if (/(guaracha|aleteo)/.test(h)) return "Guaracha";
+  if (/(dembow|el alfa|bonbon)/.test(h)) return "Dembow";
+  if (/(automotivo|mandel|funk|bibi)/.test(h)) return "Funk Mandelão";
+  if (/(reggaeton|bad bunny|titi|safaera|preguntó|pregunto)/.test(h)) return "Reggaeton Portorriquenho";
+  return current.trim() || "Reggaeton";
+}
+
+function guessEnergy(bpm: number | null): number {
+  if (bpm === null) return 3;
+  if (bpm >= 124) return 5;
+  if (bpm >= 108) return 4;
+  return 3;
+}
+
+/**
+ * Heuristic stand-in for the Claude tagger, used only in the browser dev
+ * fallback. The real suggestions come from the Rust `tag_with_ai` command.
+ */
+export function mockAiSuggestions(
+  tracks: MockInput[],
+  fields: string[],
+  charLimit: number,
+): AiSuggestion[] {
+  return tracks.map((t) => {
+    const version = detectVersion(t.title);
+    const s: AiSuggestion = { id: t.id };
+    if (fields.includes("genre")) {
+      s.genre = guessGenre(`${t.title} ${t.artist} ${t.fileName} ${t.genre}`, t.genre);
+    }
+    if (fields.includes("artist")) {
+      s.artist = cleanText(t.artist.replace(/\s*(feat\.?|ft\.?|con)\s.+$/i, ""));
+    }
+    if (fields.includes("title")) {
+      const cleanTitle = cleanText(t.title.replace(/[([][^()[\]]*(remix|edit|bootleg|mashup|vip|version|club)[^()[\]]*[)\]]/i, ""));
+      const artist = cleanText(t.artist.replace(/\s*(feat\.?|ft\.?|con)\s.+$/i, ""));
+      s.title = applyCharLimit(formatTitle({ title: cleanTitle, artist, version }), charLimit);
+    }
+    if (fields.includes("energy")) {
+      s.energy = guessEnergy(t.bpm);
+    }
+    return s;
+  });
+}

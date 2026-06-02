@@ -4,6 +4,43 @@ use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::Tag;
 
+/// Energy is stored inside the comment (per project decision). Convention:
+/// the user comment, optionally followed by ` | Energy: N` (N in 1..5).
+
+/// Split a stored comment into (user comment, energy) on read.
+fn split_energy(comment: &str) -> (String, Option<u8>) {
+    let lower = comment.to_lowercase();
+    if let Some(pos) = lower.rfind("energy") {
+        let after = &comment[pos + "energy".len()..];
+        if let Some(n) = after
+            .chars()
+            .find(|c| c.is_ascii_digit())
+            .and_then(|c| c.to_digit(10))
+        {
+            if (1..=5).contains(&n) {
+                let prefix = comment[..pos].trim_end().trim_end_matches(['|', '-', ',', ';']).trim_end();
+                return (prefix.to_string(), Some(n as u8));
+            }
+        }
+    }
+    (comment.to_string(), None)
+}
+
+/// Merge the user comment and energy back into a single comment on write.
+fn merge_energy(comment: &str, energy: Option<u8>) -> String {
+    let base = comment.trim();
+    match energy {
+        Some(e) if (1..=5).contains(&e) => {
+            if base.is_empty() {
+                format!("Energy: {e}")
+            } else {
+                format!("{base} | Energy: {e}")
+            }
+        }
+        _ => base.to_string(),
+    }
+}
+
 /// Read the primary tag of a file into our `TrackTags` model.
 ///
 /// Returns an `Err(String)` for unreadable/corrupt files so the frontend can
@@ -26,6 +63,9 @@ pub fn read_tags(path: &str) -> Result<TrackTags, String> {
         .and_then(|s| s.trim().parse::<f32>().ok())
         .map(|f| f.round() as u32);
 
+    let raw_comment = tag.comment().map(|c| c.to_string()).unwrap_or_default();
+    let (comment, energy) = split_energy(&raw_comment);
+
     Ok(TrackTags {
         title: tag.title().map(|c| c.to_string()).unwrap_or_default(),
         artist: tag.artist().map(|c| c.to_string()).unwrap_or_default(),
@@ -34,9 +74,8 @@ pub fn read_tags(path: &str) -> Result<TrackTags, String> {
         bpm,
         key: tag.get_string(&ItemKey::InitialKey).unwrap_or_default().to_string(),
         year: tag.year().map(|y| y as i32),
-        // Energy is deduced by the AI step; not parsed from disk yet.
-        energy: None,
-        comment: tag.comment().map(|c| c.to_string()).unwrap_or_default(),
+        energy,
+        comment,
     })
 }
 
@@ -77,7 +116,8 @@ pub fn write_tags(path: &str, tags: &TrackTags) -> Result<(), String> {
     set_or_remove(&mut tag, ItemKey::TrackArtist, &tags.artist);
     set_or_remove(&mut tag, ItemKey::AlbumTitle, &tags.album);
     set_or_remove(&mut tag, ItemKey::Genre, &tags.genre);
-    set_or_remove(&mut tag, ItemKey::Comment, &tags.comment);
+    // Energy is folded into the comment (project decision).
+    set_or_remove(&mut tag, ItemKey::Comment, &merge_energy(&tags.comment, tags.energy));
     set_or_remove(&mut tag, ItemKey::InitialKey, &tags.key);
 
     match tags.bpm {

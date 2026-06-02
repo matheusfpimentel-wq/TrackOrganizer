@@ -212,6 +212,7 @@ export function TrackGrid() {
                 const key = cellKey(row.id, col.key);
                 const selected = selection.has(key);
                 const dirty = row.edited[col.key] !== row.original[col.key];
+                const pending = row.suggested?.[col.key] !== undefined;
                 const isEditing = editing?.rowId === row.id && editing.colKey === col.key;
                 return (
                   <td
@@ -223,8 +224,10 @@ export function TrackGrid() {
                       "border border-border px-2 py-1 align-middle",
                       col.type === "number" ? "text-right tabular-nums" : "text-left",
                       selected && "bg-primary/25 ring-1 ring-inset ring-primary",
-                      dirty && !selected && "bg-dirty/10",
+                      pending && !selected && "bg-suggested/15 ring-1 ring-inset ring-suggested",
+                      dirty && !selected && !pending && "bg-dirty/10",
                     )}
+                    title={pending ? `IA sugere: ${displayValue(row.suggested?.[col.key] ?? null)}` : undefined}
                   >
                     {isEditing ? (
                       <input

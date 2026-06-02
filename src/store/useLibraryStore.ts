@@ -1,27 +1,25 @@
 import { create } from "zustand";
 import {
+  AI_FIELDS,
   emptyTags,
+  type AiField,
+  type AiSuggestion,
   type ScannedTrack,
   type TagKey,
   type TrackRow,
   type TrackTags,
 } from "@/types/track";
 import * as api from "@/lib/api";
+import type { PublicConfig } from "@/lib/api";
 
 const NUMERIC_KEYS: ReadonlySet<TagKey> = new Set<TagKey>(["bpm", "year", "energy"]);
+const AI_FIELD_SET: ReadonlySet<string> = new Set<string>(AI_FIELDS);
+/** Tracks per AI request, to avoid token blowups (spec: ~20). */
+const AI_CHUNK = 20;
 
-export interface Settings {
-  /** Rekordbox-safe title length. */
-  charLimit: number;
-  /** Canonical title template (documented; applied by the curation engine). */
-  titleFormat: string;
-  /** Claude model id used once AI is wired. */
-  model: string;
-}
-
-interface LastWrite {
-  /** Previous on-disk tags, for "undo last write". */
-  snapshot: { filePath: string; tags: TrackTags }[];
+interface WriteSummary {
+  ok: number;
+  failed: number;
   backupPath: string;
 }
 
@@ -29,15 +27,22 @@ interface LibraryState {
   folder: string | null;
   rows: TrackRow[];
   scanning: boolean;
-  writing: boolean;
   globalError: string | null;
   filter: string;
   /** Selected cells as `rowId::colKey`. */
   selection: Set<string>;
   /** Anchor for shift-range selection. */
   anchor: { rowId: string; colKey: TagKey } | null;
-  settings: Settings;
-  lastWrite: LastWrite | null;
+
+  config: PublicConfig;
+
+  aiRunning: boolean;
+  aiProgress: { done: number; total: number } | null;
+  aiError: string | null;
+  reviewOpen: boolean;
+
+  writing: boolean;
+  writeResult: WriteSummary | null;
 
   scan: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -47,7 +52,21 @@ interface LibraryState {
   setSelection: (keys: Set<string>) => void;
   setAnchor: (anchor: { rowId: string; colKey: TagKey } | null) => void;
   clearSelection: () => void;
-  updateSettings: (patch: Partial<Settings>) => void;
+
+  loadConfig: () => Promise<void>;
+  saveConfig: (patch: { model?: string; charLimit?: number; apiKey?: string }) => Promise<void>;
+  clearApiKey: () => Promise<void>;
+
+  runAi: () => Promise<void>;
+  applySuggestion: (rowId: string, field: AiField) => void;
+  rejectSuggestion: (rowId: string, field: AiField) => void;
+  applyAllSuggestions: () => void;
+  rejectAllSuggestions: () => void;
+  setReviewOpen: (open: boolean) => void;
+  setAiError: (msg: string | null) => void;
+
+  writeApproved: () => Promise<void>;
+  clearWriteResult: () => void;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -99,21 +118,94 @@ function coerce(key: TagKey, raw: string): TrackTags[TagKey] {
   return raw;
 }
 
-export const useLibraryStore = create<LibraryState>((set) => ({
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+/** Map the selection to AI-capable fields per row + the union of fields. */
+function buildAiTargets(selection: Set<string>): {
+  perRow: Map<string, Set<AiField>>;
+  fields: AiField[];
+} {
+  const perRow = new Map<string, Set<AiField>>();
+  const fields = new Set<AiField>();
+  for (const key of selection) {
+    const sep = key.indexOf("::");
+    if (sep < 0) {
+      continue;
+    }
+    const colKey = key.slice(sep + 2);
+    if (!AI_FIELD_SET.has(colKey)) {
+      continue;
+    }
+    const field = colKey as AiField;
+    const rowId = key.slice(0, sep);
+    const set = perRow.get(rowId) ?? new Set<AiField>();
+    set.add(field);
+    perRow.set(rowId, set);
+    fields.add(field);
+  }
+  return { perRow, fields: [...fields] };
+}
+
+function toAiInput(row: TrackRow): api.AiTrackInput {
+  const t = row.edited;
+  return {
+    id: row.id,
+    title: t.title,
+    artist: t.artist,
+    album: t.album,
+    genre: t.genre,
+    comment: t.comment,
+    bpm: t.bpm,
+    key: t.key,
+    year: t.year,
+    fileName: row.fileName,
+  };
+}
+
+/** Keep only suggested fields the user targeted and that actually differ. */
+function buildSuggestedPartial(
+  sug: AiSuggestion,
+  wanted: Set<AiField>,
+  edited: TrackTags,
+): Partial<TrackTags> {
+  let out: Partial<TrackTags> = {};
+  for (const field of wanted) {
+    const value = sug[field];
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (edited[field] === value) {
+      continue;
+    }
+    out = { ...out, [field]: value };
+  }
+  return out;
+}
+
+export const useLibraryStore = create<LibraryState>((set, get) => ({
   folder: null,
   rows: [],
   scanning: false,
-  writing: false,
   globalError: null,
   filter: "",
   selection: new Set<string>(),
   anchor: null,
-  settings: {
-    charLimit: 50,
-    titleFormat: "Título - Artista (Versão)",
-    model: "claude-sonnet-4-6",
-  },
-  lastWrite: null,
+
+  config: { model: "claude-sonnet-4-6", charLimit: 50, hasApiKey: false },
+
+  aiRunning: false,
+  aiProgress: null,
+  aiError: null,
+  reviewOpen: false,
+
+  writing: false,
+  writeResult: null,
 
   scan: async () => {
     set({ globalError: null });
@@ -185,7 +277,181 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setSelection: (keys) => set({ selection: keys }),
   setAnchor: (anchor) => set({ anchor }),
   clearSelection: () => set({ selection: new Set<string>(), anchor: null }),
-  updateSettings: (patch) => set((state) => ({ settings: { ...state.settings, ...patch } })),
+
+  loadConfig: async () => {
+    try {
+      const config = await api.getConfig();
+      set({ config });
+    } catch (err) {
+      set({ globalError: String(err) });
+    }
+  },
+
+  saveConfig: async (patch) => {
+    const config = await api.updateConfig(patch);
+    set({ config });
+  },
+
+  clearApiKey: async () => {
+    const config = await api.clearApiKey();
+    set({ config });
+  },
+
+  runAi: async () => {
+    const { rows, selection, config } = get();
+    const { perRow, fields } = buildAiTargets(selection);
+    if (fields.length === 0 || perRow.size === 0) {
+      set({ aiError: "Selecione células de Título, Artista, Gênero ou Energia." });
+      return;
+    }
+    if (!config.hasApiKey) {
+      set({ aiError: "Configure a API key do Claude (engrenagem) antes de taggear." });
+      return;
+    }
+    const targetRows = rows.filter((r) => perRow.has(r.id) && !r.error);
+    if (targetRows.length === 0) {
+      set({ aiError: "Nenhuma faixa válida selecionada." });
+      return;
+    }
+
+    set({ aiRunning: true, aiError: null, aiProgress: { done: 0, total: targetRows.length } });
+    try {
+      const byId = new Map<string, AiSuggestion>();
+      let done = 0;
+      for (const part of chunk(targetRows, AI_CHUNK)) {
+        const res = await api.tagWithAi({
+          tracks: part.map(toAiInput),
+          fields,
+          charLimit: config.charLimit,
+        });
+        for (const s of res.suggestions) {
+          byId.set(s.id, s);
+        }
+        done += part.length;
+        set({ aiProgress: { done, total: targetRows.length } });
+      }
+
+      set((state) => ({
+        rows: state.rows.map((row) => {
+          const sug = byId.get(row.id);
+          const wanted = perRow.get(row.id);
+          if (!sug || !wanted) {
+            return row;
+          }
+          const suggested = buildSuggestedPartial(sug, wanted, row.edited);
+          if (Object.keys(suggested).length === 0) {
+            return row;
+          }
+          return { ...row, suggested, status: "pending_approval" };
+        }),
+        aiRunning: false,
+        aiProgress: null,
+        reviewOpen: true,
+      }));
+    } catch (err) {
+      set({ aiRunning: false, aiProgress: null, aiError: String(err) });
+    }
+  },
+
+  applySuggestion: (rowId, field) => {
+    set((state) => ({
+      rows: state.rows.map((row) => {
+        if (row.id !== rowId || !row.suggested) {
+          return row;
+        }
+        const value = row.suggested[field];
+        if (value === undefined) {
+          return row;
+        }
+        const edited: TrackTags = { ...row.edited, [field]: value };
+        const rest = { ...row.suggested };
+        delete rest[field];
+        const suggested = Object.keys(rest).length > 0 ? rest : null;
+        return {
+          ...row,
+          edited,
+          suggested,
+          status: suggested ? "pending_approval" : statusFor({ ...row, edited }),
+        };
+      }),
+    }));
+  },
+
+  rejectSuggestion: (rowId, field) => {
+    set((state) => ({
+      rows: state.rows.map((row) => {
+        if (row.id !== rowId || !row.suggested) {
+          return row;
+        }
+        const rest = { ...row.suggested };
+        delete rest[field];
+        const suggested = Object.keys(rest).length > 0 ? rest : null;
+        return { ...row, suggested, status: suggested ? "pending_approval" : statusFor(row) };
+      }),
+    }));
+  },
+
+  applyAllSuggestions: () => {
+    set((state) => ({
+      reviewOpen: false,
+      rows: state.rows.map((row) => {
+        if (!row.suggested) {
+          return row;
+        }
+        let edited: TrackTags = { ...row.edited };
+        for (const field of AI_FIELDS) {
+          const value = row.suggested[field];
+          if (value !== undefined) {
+            edited = { ...edited, [field]: value };
+          }
+        }
+        return { ...row, edited, suggested: null, status: statusFor({ ...row, edited }) };
+      }),
+    }));
+  },
+
+  rejectAllSuggestions: () => {
+    set((state) => ({
+      reviewOpen: false,
+      rows: state.rows.map((row) =>
+        row.suggested ? { ...row, suggested: null, status: statusFor(row) } : row,
+      ),
+    }));
+  },
+
+  setReviewOpen: (open) => set({ reviewOpen: open }),
+  setAiError: (msg) => set({ aiError: msg }),
+
+  writeApproved: async () => {
+    const dirty = get().rows.filter((r) => r.status === "ready_to_write");
+    if (dirty.length === 0) {
+      return;
+    }
+    set({ writing: true, globalError: null, writeResult: null });
+    try {
+      const outcome = await api.writeTags(
+        dirty.map((r) => ({ filePath: r.filePath, tags: r.edited })),
+      );
+      const okPaths = new Set(outcome.results.filter((x) => x.ok).map((x) => x.filePath));
+      set((state) => ({
+        writing: false,
+        rows: state.rows.map((row) =>
+          okPaths.has(row.filePath)
+            ? { ...row, original: { ...row.edited }, status: "pristine" }
+            : row,
+        ),
+        writeResult: {
+          ok: outcome.results.filter((x) => x.ok).length,
+          failed: outcome.results.filter((x) => !x.ok).length,
+          backupPath: outcome.backupPath,
+        },
+      }));
+    } catch (err) {
+      set({ writing: false, globalError: String(err) });
+    }
+  },
+
+  clearWriteResult: () => set({ writeResult: null }),
 }));
 
 /** Selector: rows passing the current text filter. */

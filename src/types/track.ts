@@ -84,6 +84,19 @@ export const COLUMNS: readonly ColumnDef[] = [
   { key: "comment", label: "Comentário", type: "text", width: 220 },
 ] as const;
 
+/** Tag fields the AI is allowed to suggest. */
+export const AI_FIELDS = ["title", "artist", "genre", "energy"] as const;
+export type AiField = (typeof AI_FIELDS)[number];
+
+/** AI proposal for one track (only requested fields populated). */
+export interface AiSuggestion {
+  id: string;
+  title?: string;
+  artist?: string;
+  genre?: string;
+  energy?: number;
+}
+
 /** Build an empty tag set. */
 export function emptyTags(): TrackTags {
   return {

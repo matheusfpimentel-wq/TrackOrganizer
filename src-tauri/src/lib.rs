@@ -1,4 +1,6 @@
+mod ai;
 mod commands;
+mod config;
 mod model;
 mod scan;
 mod tags;
@@ -12,6 +14,10 @@ pub fn run() {
             commands::scan_folder,
             commands::read_tags,
             commands::write_tags,
+            config::get_config,
+            config::update_config,
+            config::clear_api_key,
+            ai::tag_with_ai,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tracklistr");

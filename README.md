@@ -4,14 +4,14 @@ Desktop app para **limpar, padronizar e curar metadados (ID3 tags)** de uma
 biblioteca de DJ antes de carregar no **Rekordbox / Serato / Traktor / Ableton**.
 Foco em DJ Open Format de Reggaeton: organização cirúrgica de gênero, energia e groove.
 
-> Status: **scaffold do core** (scan de pasta + tabela editável + leitura/escrita de
-> tags). A camada de IA está **desplugada de propósito**, aguardando validação.
+> Status: **core + IA plugada**. Scan de pasta, tabela editável, leitura/escrita de
+> tags, tagueamento com Claude (batch + diff de aprovação) e write-back com backup.
 
 ## Stack
 
 - **Tauri 2** (shell desktop) + **React 18** + **TypeScript strict** + **Vite** + **Tailwind** (UI estilo shadcn/ui)
 - **Rust** no core, com a crate [`lofty`](https://crates.io/crates/lofty) para ID3v2 / MP4-M4A / FLAC / WAV / AIFF
-- **IA (futuro):** API do Claude (`claude-sonnet-4-6`), API key em config local — nunca hardcoded
+- **IA:** API do Claude (`claude-sonnet-4-6`) via `reqwest` no backend, com **tool-use** para saída estruturada. API key em config local — nunca hardcoded nem exposta ao frontend
 
 ## Arquitetura de pastas
 
@@ -58,7 +58,7 @@ interface TrackRow {
   hasArtwork: boolean;
   original: TrackTags;                   // snapshot do disco (diff/undo/backup)
   edited: TrackTags;                     // edições manuais (começa = original)
-  suggested: Partial<TrackTags> | null;  // proposta da IA (futuro)
+  suggested: Partial<TrackTags> | null;  // proposta da IA (aguardando aprovação)
   status: 'pristine' | 'pending_approval' | 'ready_to_write' | 'writing' | 'error';
   error: string | null;
 }
@@ -83,8 +83,24 @@ Comentário** (+ Nome do arquivo, read-only).
 | `scan_folder`  | `(path) -> Vec<ScannedTrack>`             | Recursivo; arquivo corrompido vira `error` na linha, sem panic |
 | `read_tags`    | `(path) -> Result<TrackTags, String>`     | Re-leitura de uma faixa |
 | `write_tags`   | `(items) -> Result<WriteOutcome, String>` | **Backup automático** das tags atuais (JSON) antes de gravar; escrita por arquivo, falha isolada |
+| `get_config` / `update_config` / `clear_api_key` | — | Config local (modelo, limite de chars, API key). A key **nunca** é devolvida ao frontend (só `hasApiKey`) |
+| `tag_with_ai`  | `(request) -> AiResponse`                 | Chama a API do Claude (tool-use) p/ um lote (~20 faixas) e devolve sugestões |
 
 > O write-back **nunca** é chamado sem aprovação na UI; o backup viabiliza o *undo*.
+
+## IA (Claude)
+
+1. Configure a **API key** e o **modelo** na engrenagem (⚙). A key fica no
+   `config.json` do diretório de config do SO, gerida pelo backend.
+2. Selecione células das colunas **Título / Artista / Gênero / Energia** (estilo Excel)
+   e clique **Taggear com IA**. As faixas vão em **lotes de ~20** para a API.
+3. Revise o **diff original → sugerido** e aprove/rejeite por célula ou em lote.
+4. **Gravar** persiste só o aprovado (com backup). A **Energia (1–5)** é dobrada no
+   campo `comment` no disco (ex.: `... | Energy: 4`) e lida de volta no próximo scan.
+
+**Regras de curadoria** (no system prompt, `src-tauri/src/ai.rs`): gênero específico
+para latino/BR com consistência no lote, remix classificado pelo gênero do remix,
+título padronizado `Título - Artista (Versão)` com limite de chars, energia 1–5.
 
 ## Como rodar (desenvolvimento)
 
@@ -144,18 +160,22 @@ core em Rust compilam, mas o link final do app desktop não.
 
 - `npm run build` (tsc strict + vite) — **OK**
 - `cargo check` de `model` + `tags` + `scan` com `lofty 0.22` — **OK**
-- Link final do Tauri depende de libs GTK/webkit do SO (ver acima)
+- `cargo check` do call-chain `reqwest` (rustls + json) usado em `ai.rs` — **OK**
+- Fluxo de IA ponta-a-ponta exercido no navegador (mock tagger): scan → seleção →
+  diff → aprovação → write-back — **OK**
+- Link final do Tauri e a chamada real à API do Claude dependem do ambiente desktop
+  (libs GTK/webkit no Linux) — validar no macOS/Windows ou via CI
 
-## Roadmap (pós-validação)
+## Roadmap
 
-1. **Plugar a IA** (batch ~20 faixas/chunk): gênero de alta granularidade para
-   latino/brasileiro, agrupamento lógico p/ Smart Crates, detecção de remix pelo
-   título (classificar pelo gênero do remix), e tag de Energia 1–5.
-2. **Diff visual** original vs. sugerido com aprovação por célula / batch.
-3. **Padronização de título** `Título - Artista (Versão)` com limite de chars (default 50).
-4. **Undo** da última gravação (a partir do backup JSON).
-5. **Módulos avançados:** Deep Scan (fingerprint p/ duplicatas, detecção de "fake 320",
-   estrutura musical p/ cues) e **Setlist** (timeline + transições + export `.m3u`/XML).
+- [x] **IA plugada** (batch ~20/chunk, tool-use, regras de gênero/energia/título)
+- [x] **Diff visual** original vs. sugerido, aprovação por célula / lote
+- [x] **Padronização de título** `Título - Artista (Versão)` com limite de chars
+- [x] **Backup automático** antes do write-back
+- [ ] **Undo** da última gravação (a partir do backup JSON já gerado)
+- [ ] **Módulos avançados:** Deep Scan (fingerprint p/ duplicatas, detecção de
+  "fake 320", estrutura musical p/ cues) e **Setlist** (timeline + transições +
+  export `.m3u`/XML)
 
 ## Restrições do projeto
 
