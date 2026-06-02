@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ScannedTrack, TrackTags } from "@/types/track";
+import { SAMPLE_TRACKS } from "@/lib/sampleData";
 
 /** True when running inside the Tauri webview (vs. a plain browser tab). */
 export function isTauri(): boolean {
@@ -9,6 +10,10 @@ export function isTauri(): boolean {
 
 /** Native folder picker. Returns the absolute path or null if cancelled. */
 export async function pickFolder(): Promise<string | null> {
+  // Browser dev fallback: no native dialog, return a stub path.
+  if (!isTauri()) {
+    return "/Music (amostra de desenvolvimento)";
+  }
   const selected = await open({ directory: true, multiple: false });
   if (typeof selected === "string") {
     return selected;
@@ -18,6 +23,10 @@ export async function pickFolder(): Promise<string | null> {
 
 /** Recursively scan a folder for audio files and read their tags. */
 export async function scanFolder(path: string): Promise<ScannedTrack[]> {
+  // Browser dev fallback: serve sample data so the UI works without Tauri.
+  if (!isTauri()) {
+    return SAMPLE_TRACKS;
+  }
   return invoke<ScannedTrack[]>("scan_folder", { path });
 }
 
