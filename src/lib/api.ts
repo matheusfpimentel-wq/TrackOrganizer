@@ -78,13 +78,34 @@ export async function undoWrite(backupPath: string): Promise<WriteOutcome> {
 // Local config (API key lives only in the backend; never returned to the UI)
 // ---------------------------------------------------------------------------
 
+export type AiProvider = "claude" | "ollama";
+
 export interface PublicConfig {
+  provider: AiProvider;
   model: string;
   charLimit: number;
   hasApiKey: boolean;
+  ollamaUrl: string;
+  ollamaModel: string;
 }
 
-const DEV_CONFIG: PublicConfig = { model: "claude-sonnet-4-6", charLimit: 50, hasApiKey: true };
+export interface ConfigPatch {
+  provider?: AiProvider;
+  model?: string;
+  charLimit?: number;
+  apiKey?: string;
+  ollamaUrl?: string;
+  ollamaModel?: string;
+}
+
+const DEV_CONFIG: PublicConfig = {
+  provider: "claude",
+  model: "claude-sonnet-4-6",
+  charLimit: 50,
+  hasApiKey: true,
+  ollamaUrl: "http://localhost:11434",
+  ollamaModel: "llama3.1",
+};
 
 export async function getConfig(): Promise<PublicConfig> {
   if (!isTauri()) {
@@ -93,15 +114,12 @@ export async function getConfig(): Promise<PublicConfig> {
   return invoke<PublicConfig>("get_config");
 }
 
-export async function updateConfig(patch: {
-  model?: string;
-  charLimit?: number;
-  apiKey?: string;
-}): Promise<PublicConfig> {
+export async function updateConfig(patch: ConfigPatch): Promise<PublicConfig> {
   if (!isTauri()) {
-    return { ...DEV_CONFIG, ...patch, hasApiKey: true };
+    const { apiKey: _apiKey, ...rest } = patch;
+    return { ...DEV_CONFIG, ...rest, hasApiKey: true };
   }
-  return invoke<PublicConfig>("update_config", patch);
+  return invoke<PublicConfig>("update_config", patch as unknown as Record<string, unknown>);
 }
 
 export async function clearApiKey(): Promise<PublicConfig> {

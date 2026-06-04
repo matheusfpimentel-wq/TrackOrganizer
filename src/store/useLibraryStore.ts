@@ -10,7 +10,7 @@ import {
   type TrackTags,
 } from "@/types/track";
 import * as api from "@/lib/api";
-import type { PublicConfig } from "@/lib/api";
+import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
 
 const NUMERIC_KEYS: ReadonlySet<TagKey> = new Set<TagKey>(["bpm", "year", "energy"]);
@@ -65,7 +65,7 @@ interface LibraryState {
   clearSelection: () => void;
 
   loadConfig: () => Promise<void>;
-  saveConfig: (patch: { model?: string; charLimit?: number; apiKey?: string }) => Promise<void>;
+  saveConfig: (patch: ConfigPatch) => Promise<void>;
   clearApiKey: () => Promise<void>;
 
   runAi: () => Promise<void>;
@@ -210,7 +210,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   selection: new Set<string>(),
   anchor: null,
 
-  config: { model: "claude-sonnet-4-6", charLimit: 50, hasApiKey: false },
+  config: {
+    provider: "claude",
+    model: "claude-sonnet-4-6",
+    charLimit: 50,
+    hasApiKey: false,
+    ollamaUrl: "http://localhost:11434",
+    ollamaModel: "llama3.1",
+  },
 
   aiRunning: false,
   aiProgress: null,
@@ -319,7 +326,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ aiError: "Selecione células de Título, Artista, Gênero ou Energia." });
       return;
     }
-    if (!config.hasApiKey) {
+    if (config.provider === "claude" && !config.hasApiKey) {
       set({ aiError: "Configure a API key do Claude (engrenagem) antes de taggear." });
       return;
     }
