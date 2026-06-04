@@ -70,8 +70,11 @@ jobs:
         with:
           name: tracklistr-${{ matrix.platform }}-${{ matrix.rust-target || 'x64' }}
           if-no-files-found: warn
+          # Ship single-file installers only. The raw .app bundle is intentionally
+          # NOT uploaded: actions/upload-artifact re-zips it and loses the exec bit
+          # and symlinks, which makes macOS report the app as "damaged". Use the
+          # .dmg (it contains an intact .app) instead.
           path: |
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.app/**
             src-tauri/target/**/release/bundle/**/*.msi
             src-tauri/target/**/release/bundle/**/*-setup.exe
