@@ -217,6 +217,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     hasApiKey: false,
     ollamaUrl: "http://localhost:11434",
     ollamaModel: "llama3.1",
+    genres: [],
+    genreStrict: false,
   },
 
   aiRunning: false,

@@ -14,6 +14,7 @@ export function SettingsDialog({ open, onClose }: Props) {
   const config = useLibraryStore((s) => s.config);
   const saveConfig = useLibraryStore((s) => s.saveConfig);
   const clearApiKey = useLibraryStore((s) => s.clearApiKey);
+  const rows = useLibraryStore((s) => s.rows);
 
   const [provider, setProvider] = useState<AiProvider>(config.provider);
   const [apiKey, setApiKey] = useState("");
@@ -21,6 +22,8 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [charLimit, setCharLimit] = useState(String(config.charLimit));
   const [ollamaUrl, setOllamaUrl] = useState(config.ollamaUrl);
   const [ollamaModel, setOllamaModel] = useState(config.ollamaModel);
+  const [genresText, setGenresText] = useState(config.genres.join("\n"));
+  const [genreStrict, setGenreStrict] = useState(config.genreStrict);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,10 +34,29 @@ export function SettingsDialog({ open, onClose }: Props) {
       setCharLimit(String(config.charLimit));
       setOllamaUrl(config.ollamaUrl);
       setOllamaModel(config.ollamaModel);
+      setGenresText(config.genres.join("\n"));
+      setGenreStrict(config.genreStrict);
       setApiKey("");
       setError(null);
     }
   }, [open, config]);
+
+  const parsedGenres = () =>
+    genresText
+      .split("\n")
+      .map((g) => g.trim())
+      .filter(Boolean);
+
+  const seedFromLibrary = () => {
+    const merged = new Set(parsedGenres());
+    for (const r of rows) {
+      const g = r.edited.genre.trim();
+      if (g) {
+        merged.add(g);
+      }
+    }
+    setGenresText([...merged].sort((a, b) => a.localeCompare(b)).join("\n"));
+  };
 
   if (!open) {
     return null;
@@ -47,6 +69,8 @@ export function SettingsDialog({ open, onClose }: Props) {
       const patch: ConfigPatch = {
         provider,
         charLimit: Number.parseInt(charLimit, 10) || config.charLimit,
+        genres: parsedGenres(),
+        genreStrict,
       };
       if (provider === "claude") {
         patch.model = model.trim();
@@ -69,7 +93,7 @@ export function SettingsDialog({ open, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-[480px] rounded-lg border border-border bg-background p-5 shadow-xl"
+        className="max-h-[88vh] w-[480px] overflow-auto rounded-lg border border-border bg-background p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-base font-semibold">Configurações</h2>
@@ -144,6 +168,37 @@ export function SettingsDialog({ open, onClose }: Props) {
           onChange={(e) => setCharLimit(e.target.value)}
           className="mb-4 w-32"
         />
+
+        <div className="mb-1 flex items-center justify-between">
+          <label className="block text-xs text-muted-foreground">
+            Banco de Gêneros{" "}
+            <span className="text-muted-foreground/70">({parsedGenres().length})</span>
+          </label>
+          <button
+            className="text-[11px] text-primary underline"
+            onClick={seedFromLibrary}
+            type="button"
+          >
+            Preencher da biblioteca
+          </button>
+        </div>
+        <textarea
+          value={genresText}
+          onChange={(e) => setGenresText(e.target.value)}
+          rows={6}
+          spellCheck={false}
+          placeholder={"Um gênero por linha, ex.:\nReggaeton Portorriquenho\nGuaracha\nFunk Mandelão\nTech House"}
+          className="mb-2 w-full resize-y rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+        />
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={genreStrict}
+            onChange={(e) => setGenreStrict(e.target.checked)}
+            className="accent-primary"
+          />
+          Restringir a IA a estes gêneros (modo estrito)
+        </label>
 
         {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 

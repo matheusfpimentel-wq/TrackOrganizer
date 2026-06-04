@@ -40,6 +40,12 @@ pub struct StoredConfig {
     pub ollama_url: String,
     #[serde(default = "default_ollama_model")]
     pub ollama_model: String,
+    /// User-curated genre vocabulary the AI should use.
+    #[serde(default)]
+    pub genres: Vec<String>,
+    /// When true, the AI may only pick genres from `genres`.
+    #[serde(default)]
+    pub genre_strict: bool,
 }
 
 impl Default for StoredConfig {
@@ -51,6 +57,8 @@ impl Default for StoredConfig {
             char_limit: default_char_limit(),
             ollama_url: default_ollama_url(),
             ollama_model: default_ollama_model(),
+            genres: Vec::new(),
+            genre_strict: false,
         }
     }
 }
@@ -64,6 +72,8 @@ impl StoredConfig {
             has_api_key: !self.api_key.trim().is_empty(),
             ollama_url: self.ollama_url.clone(),
             ollama_model: self.ollama_model.clone(),
+            genres: self.genres.clone(),
+            genre_strict: self.genre_strict,
         }
     }
 }
@@ -109,6 +119,8 @@ pub fn update_config(
     api_key: Option<String>,
     ollama_url: Option<String>,
     ollama_model: Option<String>,
+    genres: Option<Vec<String>>,
+    genre_strict: Option<bool>,
 ) -> Result<PublicConfig, String> {
     let mut cfg = load(&app);
     if let Some(p) = provider {
@@ -138,6 +150,18 @@ pub fn update_config(
         if !om.trim().is_empty() {
             cfg.ollama_model = om.trim().to_string();
         }
+    }
+    if let Some(list) = genres {
+        // Normalize: trim, drop empties, de-duplicate case-insensitively.
+        let mut seen = std::collections::HashSet::new();
+        cfg.genres = list
+            .into_iter()
+            .map(|g| g.trim().to_string())
+            .filter(|g| !g.is_empty() && seen.insert(g.to_lowercase()))
+            .collect();
+    }
+    if let Some(strict) = genre_strict {
+        cfg.genre_strict = strict;
     }
     save(&app, &cfg)?;
     Ok(cfg.to_public())

@@ -98,6 +98,12 @@ Na engrenagem (⚙) escolha o **Provedor**:
   e aponte a **URL** (default `http://localhost:11434`) e o **modelo**. Tudo roda na sua
   máquina, sem custo e sem enviar a tracklist para nuvem nenhuma.
 
+**Banco de Gêneros:** ainda na engrenagem, você mantém um vocabulário de gêneros que a IA
+deve usar (um por linha). Em **modo estrito** a IA só pode escolher rótulos da lista
+(imposto via `enum` no schema, tanto no Claude quanto no Ollama); fora do estrito, ela
+prioriza fortemente a lista mas pode propor algo novo se nada encaixar. O botão
+**Preencher da biblioteca** semeia a lista com os gêneros já presentes nas faixas.
+
 Depois:
 
 1. A key/config fica no `config.json` do diretório de config do SO, gerida pelo backend.
