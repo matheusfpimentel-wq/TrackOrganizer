@@ -113,4 +113,6 @@ pub struct PublicConfig {
     pub has_api_key: bool,
     pub ollama_url: String,
     pub ollama_model: String,
+    pub genres: Vec<String>,
+    pub genre_strict: bool,
 }

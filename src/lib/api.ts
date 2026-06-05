@@ -87,6 +87,8 @@ export interface PublicConfig {
   hasApiKey: boolean;
   ollamaUrl: string;
   ollamaModel: string;
+  genres: string[];
+  genreStrict: boolean;
 }
 
 export interface ConfigPatch {
@@ -96,6 +98,8 @@ export interface ConfigPatch {
   apiKey?: string;
   ollamaUrl?: string;
   ollamaModel?: string;
+  genres?: string[];
+  genreStrict?: boolean;
 }
 
 const DEV_CONFIG: PublicConfig = {
@@ -105,6 +109,8 @@ const DEV_CONFIG: PublicConfig = {
   hasApiKey: true,
   ollamaUrl: "http://localhost:11434",
   ollamaModel: "llama3.1",
+  genres: [],
+  genreStrict: false,
 };
 
 export async function getConfig(): Promise<PublicConfig> {

@@ -7,7 +7,7 @@ const CLAUDE_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 
 /// Build the system prompt that encodes the curation rules.
-fn system_prompt(char_limit: u32, fields: &[String]) -> String {
+fn system_prompt(char_limit: u32, fields: &[String], genres: &[String], strict: bool) -> String {
     let wants = |f: &str| fields.iter().any(|x| x == f);
 
     let mut rules = String::from(
@@ -33,6 +33,22 @@ Axé, MPB, Tecnobrega.\n\
 - Para eletrônico use granularidade média que agrupe faixas parecidas: House, Tech House, \
 Afro House, Melodic Techno, UK Garage, etc. — evite microgêneros excessivos.\n",
         );
+
+        if !genres.is_empty() {
+            let list = genres.join(", ");
+            if strict {
+                rules.push_str(&format!(
+                    "\nBANCO DE GÊNEROS (MODO ESTRITO): use EXCLUSIVAMENTE um destes rótulos \
+no campo `genre`, escolhendo o mais próximo. NÃO invente outros: {list}.\n"
+                ));
+            } else {
+                rules.push_str(&format!(
+                    "\nBANCO DE GÊNEROS (preferencial): priorize FORTEMENTE estes rótulos no \
+campo `genre`, reutilizando-os para manter consistência. Só proponha um gênero fora da \
+lista se nenhum encaixar: {list}.\n"
+                ));
+            }
+        }
     }
     if wants("title") {
         rules.push_str(&format!(
@@ -68,7 +84,7 @@ factuais (ano/álbum).\n",
 }
 
 /// JSON schema for the structured output (shared by Claude tool-use & Ollama format).
-fn suggestions_schema(fields: &[String]) -> Value {
+fn suggestions_schema(fields: &[String], genres: &[String], strict: bool) -> Value {
     let mut props = serde_json::Map::new();
     props.insert("id".into(), json!({ "type": "string" }));
     if fields.iter().any(|f| f == "title") {
@@ -78,7 +94,14 @@ fn suggestions_schema(fields: &[String]) -> Value {
         props.insert("artist".into(), json!({ "type": "string" }));
     }
     if fields.iter().any(|f| f == "genre") {
-        props.insert("genre".into(), json!({ "type": "string" }));
+        // In strict mode with a non-empty bank, constrain genre to an enum so
+        // both Claude (tool-use) and Ollama (format) enforce the vocabulary.
+        if strict && !genres.is_empty() {
+            let enum_vals: Vec<Value> = genres.iter().map(|g| Value::String(g.clone())).collect();
+            props.insert("genre".into(), json!({ "type": "string", "enum": enum_vals }));
+        } else {
+            props.insert("genre".into(), json!({ "type": "string" }));
+        }
     }
     if fields.iter().any(|f| f == "energy") {
         props.insert(
@@ -224,9 +247,9 @@ pub async fn tag_with_ai(app: AppHandle, request: AiRequest) -> Result<AiRespons
         return Ok(AiResponse { suggestions: vec![] });
     }
     let cfg = config::load(&app);
-    let system = system_prompt(request.char_limit, &request.fields);
+    let system = system_prompt(request.char_limit, &request.fields, &cfg.genres, cfg.genre_strict);
     let user = user_content(&request)?;
-    let schema = suggestions_schema(&request.fields);
+    let schema = suggestions_schema(&request.fields, &cfg.genres, cfg.genre_strict);
 
     if cfg.provider == "ollama" {
         call_ollama(&cfg.ollama_url, &cfg.ollama_model, system, user, schema).await
