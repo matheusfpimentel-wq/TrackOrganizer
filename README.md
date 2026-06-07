@@ -273,8 +273,15 @@ cues* por faixa) e os cues detectados saem como **`POSITION_MARK` (Memory Cues)*
 cada `<TRACK>` no `rekordbox.xml` exportado (coleção *RB XML* ou playlist da Setlist). Importe
 o XML no Rekordbox e os cues aparecem nas faixas.
 
-> **Fase 2 — próximos:** GEOB do Serato (cues no próprio arquivo) + `.crate`, e `CUE_V2` na
-> coleção `.nml` do Traktor.
+**Serato (Fase 2):**
+- **Cues** → menu de contexto **Gravar cues no Serato (MP3)**: escreve um frame GEOB
+  `Serato Markers2` (hot cues) **dentro do arquivo**, preservando outros GEOB do Serato
+  (BeatGrid/Overview) e fazendo **cópia de backup** do arquivo antes. _(MP3 por enquanto.)_
+- **Playlists** → painel Setlist → **Serato .crate** (formato nativo de crate).
+
+> O encoder do Markers2 tem **teste de round-trip** (encode→decode), mas a compatibilidade
+> final depende do seu Serato — teste num arquivo de cópia e confirme. **Próximo:** Traktor
+> (`CUE_V2` + coleção `.nml`).
 
 ## Validação feita
 

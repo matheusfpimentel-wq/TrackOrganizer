@@ -1,8 +1,8 @@
 use crate::model::{
-    DeepScanResult, DupGroup, ScannedTrack, StructureResult, TrackTags, WriteOutcome, WriteRequest,
-    WriteResult,
+    Cue, DeepScanResult, DupGroup, ScannedTrack, StructureResult, TrackTags, WriteOutcome,
+    WriteRequest, WriteResult,
 };
-use crate::{deepscan, import, scan, tags};
+use crate::{deepscan, import, scan, serato, tags};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -133,4 +133,28 @@ pub fn find_audio_duplicates(paths: Vec<String>) -> Result<Vec<DupGroup>, String
 #[tauri::command]
 pub fn detect_cues(path: String) -> Result<StructureResult, String> {
     deepscan::detect_cues(&path)
+}
+
+/// Write cues into an MP3 as Serato Markers2 (backs up the file first).
+#[tauri::command]
+pub fn write_serato_cues(path: String, cues: Vec<Cue>) -> Result<String, String> {
+    // Full-file backup before touching the audio file.
+    let backup_dir = std::env::temp_dir().join("tracklistr").join("serato-backups");
+    fs::create_dir_all(&backup_dir).map_err(|e| format!("backup dir: {e}"))?;
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "track".into());
+    let backup = backup_dir.join(format!("{}-{}.bak", timestamp(), name));
+    fs::copy(&path, &backup).map_err(|e| format!("backup: {e}"))?;
+
+    serato::write_serato_cues(&path, &cues)?;
+    Ok(backup.to_string_lossy().to_string())
+}
+
+/// Build and write a Serato `.crate` playlist file to `dest`.
+#[tauri::command]
+pub fn export_serato_crate(dest: String, paths: Vec<String>) -> Result<(), String> {
+    let bytes = serato::build_crate(&paths);
+    fs::write(&dest, bytes).map_err(|e| format!("gravar crate: {e}"))
 }

@@ -23,6 +23,7 @@ walkdir = "2"
 quick-xml = "0.36"
 symphonia = { version = "0.5", features = ["mp3", "aac", "alac", "isomp4", "flac", "pcm", "vorbis", "ogg"] }
 rustfft = "6"
+base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [profile.release]
