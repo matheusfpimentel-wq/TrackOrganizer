@@ -4,6 +4,7 @@ import {
   emptyTags,
   type AiField,
   type AiSuggestion,
+  type Cue,
   type DeepScanResult,
   type DupGroup,
   type ScannedTrack,
@@ -78,6 +79,10 @@ interface LibraryState {
   structureName: string;
   structureLoading: boolean;
   cueOpen: boolean;
+  /** Detected cues per row id (exported as rekordbox POSITION_MARK). */
+  cuesByRow: Record<string, Cue[]>;
+  cueBatchRunning: boolean;
+  cueBatchProgress: { done: number; total: number } | null;
 
   scan: () => Promise<void>;
   importLibrary: () => Promise<void>;
@@ -119,6 +124,7 @@ interface LibraryState {
   runAudioDuplicates: () => Promise<void>;
   setAudioDupOpen: (open: boolean) => void;
   detectCues: (rowId: string) => Promise<void>;
+  detectCuesForSelection: () => Promise<void>;
   setCueOpen: (open: boolean) => void;
 }
 
@@ -289,6 +295,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   structureName: "",
   structureLoading: false,
   cueOpen: false,
+  cuesByRow: {},
+  cueBatchRunning: false,
+  cueBatchProgress: null,
 
   scan: async () => {
     set({ globalError: null });
@@ -694,10 +703,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ cueOpen: true, structureLoading: true, structure: null, structureName: row.fileName });
     try {
       const structure = await api.detectCues(row.filePath);
-      set({ structure, structureLoading: false });
+      set((state) => ({
+        structure,
+        structureLoading: false,
+        cuesByRow: { ...state.cuesByRow, [rowId]: structure.cues },
+      }));
     } catch (err) {
       set({ structureLoading: false, globalError: String(err) });
     }
+  },
+
+  detectCuesForSelection: async () => {
+    const { rows, selection } = get();
+    const ids = new Set<string>();
+    for (const key of selection) {
+      const sep = key.indexOf("::");
+      if (sep > 0) {
+        ids.add(key.slice(0, sep));
+      }
+    }
+    const targets = rows.filter((r) => ids.has(r.id) && !r.error);
+    if (targets.length === 0) {
+      set({ globalError: "Selecione faixas para detectar cues." });
+      return;
+    }
+    set({ cueBatchRunning: true, cueBatchProgress: { done: 0, total: targets.length }, globalError: null });
+    let done = 0;
+    for (const row of targets) {
+      try {
+        const structure = await api.detectCues(row.filePath);
+        set((state) => ({ cuesByRow: { ...state.cuesByRow, [row.id]: structure.cues } }));
+      } catch {
+        // skip failures, keep going
+      }
+      done += 1;
+      set({ cueBatchProgress: { done, total: targets.length } });
+    }
+    set({ cueBatchRunning: false, cueBatchProgress: null });
   },
 
   setCueOpen: (open) => set({ cueOpen: open }),

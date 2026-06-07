@@ -1,4 +1,4 @@
-import type { TrackRow } from "@/types/track";
+import type { Cue, TrackRow } from "@/types/track";
 
 /** Builders for setlist / playlist export formats. */
 
@@ -6,6 +6,8 @@ export interface SetlistEntry {
   row: TrackRow;
   /** Free-text transition note to the NEXT track. */
   note: string;
+  /** Detected cue points (exported as rekordbox POSITION_MARK). */
+  cues?: Cue[];
 }
 
 function label(row: TrackRow): string {
@@ -71,7 +73,7 @@ function rekordboxLocation(path: string): string {
  */
 export function toRekordboxXml(entries: SetlistEntry[], playlistName: string): string {
   const tracks = entries
-    .map(({ row }, i) => {
+    .map(({ row, cues }, i) => {
       const t = row.edited;
       const attrs = [
         `TrackID="${i + 1}"`,
@@ -87,6 +89,15 @@ export function toRekordboxXml(entries: SetlistEntry[], playlistName: string): s
       ]
         .filter(Boolean)
         .join(" ");
+      if (cues && cues.length > 0) {
+        const marks = cues
+          .map(
+            (c) =>
+              `        <POSITION_MARK Name="${xmlEscape(c.label)}" Type="0" Start="${c.positionSecs.toFixed(3)}" Num="-1"/>`,
+          )
+          .join("\n");
+        return `      <TRACK ${attrs}>\n${marks}\n      </TRACK>`;
+      }
       return `      <TRACK ${attrs}/>`;
     })
     .join("\n");

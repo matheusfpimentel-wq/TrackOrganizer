@@ -19,16 +19,21 @@ export function SetlistPanel() {
   const setTransitionNote = useLibraryStore((s) => s.setTransitionNote);
   const clearSetlist = useLibraryStore((s) => s.clearSetlist);
 
+  const cuesByRow = useLibraryStore((s) => s.cuesByRow);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const entries = useMemo<SetlistEntry[]>(
     () =>
       setlist
         .map((s) => {
           const row = byId.get(s.rowId);
-          return row ? { row, note: s.note } : null;
+          if (!row) {
+            return null;
+          }
+          const cues = cuesByRow[s.rowId];
+          return cues ? { row, note: s.note, cues } : { row, note: s.note };
         })
         .filter((e): e is SetlistEntry => e !== null),
-    [setlist, byId],
+    [setlist, byId, cuesByRow],
   );
 
   const totalSecs = useMemo(

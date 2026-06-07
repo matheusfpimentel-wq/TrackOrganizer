@@ -37,6 +37,10 @@ export function Toolbar({ onOpenSettings }: Props) {
   const deepScanProgress = useLibraryStore((s) => s.deepScanProgress);
   const runAudioDuplicates = useLibraryStore((s) => s.runAudioDuplicates);
   const audioDupRunning = useLibraryStore((s) => s.audioDupRunning);
+  const detectCuesForSelection = useLibraryStore((s) => s.detectCuesForSelection);
+  const cueBatchRunning = useLibraryStore((s) => s.cueBatchRunning);
+  const cueBatchProgress = useLibraryStore((s) => s.cueBatchProgress);
+  const cuesByRow = useLibraryStore((s) => s.cuesByRow);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -46,7 +50,10 @@ export function Toolbar({ onOpenSettings }: Props) {
   const dirtyCount = useMemo(() => rows.filter((r) => r.status === "ready_to_write").length, [rows]);
 
   const exportCollectionXml = () => {
-    const entries = visible.map((row) => ({ row, note: "" }));
+    const entries = visible.map((row) => {
+      const cues = cuesByRow[row.id];
+      return cues ? { row, note: "", cues } : { row, note: "" };
+    });
     void saveTextFile("rekordbox.xml", toRekordboxXml(entries, "Tracklistr Collection"), [
       { name: "Rekordbox XML", extensions: ["xml"] },
     ]);
@@ -151,6 +158,18 @@ export function Toolbar({ onOpenSettings }: Props) {
             title="Detectar duplicatas pelo áudio (fingerprint) — usa a seleção ou a biblioteca toda"
           >
             {audioDupRunning ? "Comparando…" : "Dup. áudio"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={cueBatchRunning || selection.size === 0}
+            onClick={() => void detectCuesForSelection()}
+            title="Detectar cues/estrutura nas faixas selecionadas (para exportar como POSITION_MARK)"
+          >
+            {cueBatchRunning && cueBatchProgress
+              ? `Cues ${cueBatchProgress.done}/${cueBatchProgress.total}…`
+              : "Cues (sel.)"}
           </Button>
 
           <Button

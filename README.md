@@ -268,9 +268,13 @@ Analisa o **envelope de energia** da faixa inteira e detecta **Início, Build, D
 e Outro**, mostrando uma **mini-waveform** com os marcadores e a lista de cues (tempo + tipo).
 Heurística por energia — um ponto de partida pra ajustar.
 
-> **Fase 2 de integração (próxima):** gravar esses cues como **Memory/Hot Cues nativos** —
-> frames GEOB do Serato no arquivo, `POSITION_MARK` no rekordbox.xml e `CUE_V2` no `.nml` do
-> Traktor — além de `.crate` (Serato) e coleção `.nml` (Traktor) nativos.
+**Cues no export do Rekordbox (Fase 2 — feito):** rode **Cues (sel.)** na barra (ou *Detectar
+cues* por faixa) e os cues detectados saem como **`POSITION_MARK` (Memory Cues)** dentro de
+cada `<TRACK>` no `rekordbox.xml` exportado (coleção *RB XML* ou playlist da Setlist). Importe
+o XML no Rekordbox e os cues aparecem nas faixas.
+
+> **Fase 2 — próximos:** GEOB do Serato (cues no próprio arquivo) + `.crate`, e `CUE_V2` na
+> coleção `.nml` do Traktor.
 
 ## Validação feita
 
