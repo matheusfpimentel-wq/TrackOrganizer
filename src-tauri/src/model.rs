@@ -119,6 +119,15 @@ pub struct DeepScanResult {
     pub note: String,
 }
 
+/// A cluster of files detected as the same audio by fingerprint.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DupGroup {
+    pub files: Vec<String>,
+    /// Best pairwise similarity in the group (0..1).
+    pub similarity: f32,
+}
+
 /// Public view of the local config (never exposes the API key to the frontend).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

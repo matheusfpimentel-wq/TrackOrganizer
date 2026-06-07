@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { AiSuggestion, DeepScanResult, ScannedTrack, TrackTags } from "@/types/track";
+import type { AiSuggestion, DeepScanResult, DupGroup, ScannedTrack, TrackTags } from "@/types/track";
 import { mockAiSuggestions, SAMPLE_TRACKS } from "@/lib/sampleData";
 import { downloadText } from "@/lib/export";
 
@@ -90,6 +90,16 @@ export async function deepScan(path: string): Promise<DeepScanResult> {
     };
   }
   return invoke<DeepScanResult>("deep_scan", { path });
+}
+
+/** Cluster files that share the same audio via acoustic fingerprint. */
+export async function findAudioDuplicates(paths: string[]): Promise<DupGroup[]> {
+  if (!isTauri()) {
+    // Dev stub: pair the two "bonbon" samples as the same audio.
+    const bonbons = paths.filter((p) => /bonbon/i.test(p));
+    return bonbons.length > 1 ? [{ files: bonbons, similarity: 0.97 }] : [];
+  }
+  return invoke<DupGroup[]>("find_audio_duplicates", { paths });
 }
 
 export interface WriteRequest {

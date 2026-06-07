@@ -111,6 +111,12 @@ export interface DeepScanResult {
   note: string;
 }
 
+/** A cluster of files detected as the same audio by fingerprint. */
+export interface DupGroup {
+  files: string[];
+  similarity: number;
+}
+
 /** Build an empty tag set. */
 export function emptyTags(): TrackTags {
   return {

@@ -5,6 +5,7 @@ import {
   type AiField,
   type AiSuggestion,
   type DeepScanResult,
+  type DupGroup,
   type ScannedTrack,
   type TagKey,
   type TrackRow,
@@ -66,6 +67,11 @@ interface LibraryState {
   deepScanProgress: { done: number; total: number } | null;
   deepScanOpen: boolean;
 
+  /** Audio-fingerprint duplicate groups (file paths). */
+  audioDups: DupGroup[];
+  audioDupRunning: boolean;
+  audioDupOpen: boolean;
+
   scan: () => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -103,6 +109,8 @@ interface LibraryState {
 
   runDeepScan: () => Promise<void>;
   setDeepScanOpen: (open: boolean) => void;
+  runAudioDuplicates: () => Promise<void>;
+  setAudioDupOpen: (open: boolean) => void;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -263,6 +271,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   deepScanRunning: false,
   deepScanProgress: null,
   deepScanOpen: false,
+
+  audioDups: [],
+  audioDupRunning: false,
+  audioDupOpen: false,
 
   scan: async () => {
     set({ globalError: null });
@@ -633,6 +645,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setDeepScanOpen: (open) => set({ deepScanOpen: open }),
+
+  runAudioDuplicates: async () => {
+    const { rows, selection } = get();
+    const ids = new Set<string>();
+    for (const key of selection) {
+      const sep = key.indexOf("::");
+      if (sep > 0) {
+        ids.add(key.slice(0, sep));
+      }
+    }
+    // Use the selection if any, otherwise the whole library.
+    const targets = (ids.size > 0 ? rows.filter((r) => ids.has(r.id)) : rows).filter((r) => !r.error);
+    if (targets.length < 2) {
+      set({ globalError: "Selecione ao menos 2 faixas (ou escaneie a biblioteca) para comparar." });
+      return;
+    }
+    set({ audioDupRunning: true, globalError: null });
+    try {
+      const groups = await api.findAudioDuplicates(targets.map((r) => r.filePath));
+      set({ audioDups: groups, audioDupRunning: false, audioDupOpen: true });
+    } catch (err) {
+      set({ audioDupRunning: false, globalError: String(err) });
+    }
+  },
+
+  setAudioDupOpen: (open) => set({ audioDupOpen: open }),
 }));
 
 /**
