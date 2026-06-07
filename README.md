@@ -280,8 +280,19 @@ o XML no Rekordbox e os cues aparecem nas faixas.
 - **Playlists** → painel Setlist → **Serato .crate** (formato nativo de crate).
 
 > O encoder do Markers2 tem **teste de round-trip** (encode→decode), mas a compatibilidade
-> final depende do seu Serato — teste num arquivo de cópia e confirme. **Próximo:** Traktor
-> (`CUE_V2` + coleção `.nml`).
+> final depende do seu Serato — teste num arquivo de cópia e confirme.
+
+**Traktor (Fase 2):** painel Setlist → **Traktor .nml** exporta uma coleção `collection.nml`
+com `CUE_V2` (cues, `START` em ms), `TEMPO` (BPM) e a playlist. `VOLUME` é confiável no
+Windows (letra do drive); no macOS fica em branco e o Traktor pode pedir um *relocate* único.
+
+### Integração — status
+| Plataforma | Playlists | Cues |
+|-----------|-----------|------|
+| **Rekordbox** | `rekordbox.xml` (coleção/playlist) | `POSITION_MARK` (Memory) ✅ |
+| **Serato** | `.crate` | GEOB `Serato Markers2` no MP3 ✅ |
+| **Traktor** | `.nml` | `CUE_V2` no `.nml` ✅ |
+| Universal | `.m3u8` (todos) | — |
 
 ## Validação feita
 

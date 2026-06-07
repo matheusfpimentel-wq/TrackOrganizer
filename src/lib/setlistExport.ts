@@ -120,3 +120,91 @@ ${refs}
 </DJ_PLAYLISTS>
 `;
 }
+
+/** Parse an absolute path into Traktor LOCATION parts. */
+function traktorLocation(path: string): { volume: string; dir: string; file: string; key: string } {
+  const norm = path.replace(/\\/g, "/");
+  const parts = norm.split("/").filter(Boolean);
+  const file = parts.pop() ?? "";
+  let volume = "";
+  let dirParts = parts;
+  if (/^[A-Za-z]:$/.test(parts[0] ?? "")) {
+    volume = parts[0] as string; // Windows drive, e.g. "C:"
+    dirParts = parts.slice(1);
+  }
+  const dir = `/:${dirParts.join("/:")}${dirParts.length ? "/:" : ""}`;
+  return { volume, dir, file, key: `${volume}${dir}${file}` };
+}
+
+const TRAKTOR_CUE_TYPE: Record<Cue["kind"], number> = {
+  intro: 0,
+  build: 0,
+  drop: 0,
+  break: 0,
+  outro: 0,
+};
+
+/**
+ * Traktor collection NML with one playlist. Cues are exported as CUE_V2
+ * (START in milliseconds). VOLUME is reliable on Windows (drive letter); on
+ * macOS it is left blank and Traktor may need a one-time relocate.
+ */
+export function toTraktorNml(entries: SetlistEntry[], playlistName: string): string {
+  const collection = entries
+    .map(({ row, cues }) => {
+      const t = row.edited;
+      const loc = traktorLocation(row.filePath);
+      const info = [
+        t.genre ? `GENRE="${xmlEscape(t.genre)}"` : "",
+        t.key ? `KEY="${xmlEscape(t.key)}"` : "",
+        t.comment ? `COMMENT="${xmlEscape(t.comment)}"` : "",
+        row.durationSecs != null ? `PLAYTIME="${Math.round(row.durationSecs)}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const tempo = t.bpm != null ? `\n      <TEMPO BPM="${t.bpm.toFixed(6)}" BPM_QUALITY="100.000000"></TEMPO>` : "";
+      const cueXml = (cues ?? [])
+        .slice(0, 8)
+        .map(
+          (c, i) =>
+            `      <CUE_V2 NAME="${xmlEscape(c.label)}" DISPL_ORDER="${i}" TYPE="${TRAKTOR_CUE_TYPE[c.kind]}" START="${(c.positionSecs * 1000).toFixed(1)}" LEN="0.0" REPEATS="-1" HOTCUE="${i}"></CUE_V2>`,
+        )
+        .join("\n");
+      return (
+        `    <ENTRY MODIFIED_DATE="2026/1/1" TITLE="${xmlEscape(t.title)}" ARTIST="${xmlEscape(t.artist)}">\n` +
+        `      <LOCATION DIR="${xmlEscape(loc.dir)}" FILE="${xmlEscape(loc.file)}" VOLUME="${xmlEscape(loc.volume)}"></LOCATION>` +
+        (info ? `\n      <INFO ${info}></INFO>` : "") +
+        tempo +
+        (cueXml ? `\n${cueXml}` : "") +
+        `\n    </ENTRY>`
+      );
+    })
+    .join("\n");
+
+  const playlistEntries = entries
+    .map(({ row }) => {
+      const key = traktorLocation(row.filePath).key;
+      return `          <ENTRY><PRIMARYKEY TYPE="TRACK" KEY="${xmlEscape(key)}"></PRIMARYKEY></ENTRY>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<NML VERSION="19">
+  <HEAD COMPANY="www.native-instruments.com" PROGRAM="Tracklistr"></HEAD>
+  <COLLECTION ENTRIES="${entries.length}">
+${collection}
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE TYPE="FOLDER" NAME="$ROOT">
+      <SUBNODES COUNT="1">
+        <NODE TYPE="PLAYLIST" NAME="${xmlEscape(playlistName)}">
+          <PLAYLIST ENTRIES="${entries.length}" TYPE="LIST">
+${playlistEntries}
+          </PLAYLIST>
+        </NODE>
+      </SUBNODES>
+    </NODE>
+  </PLAYLISTS>
+</NML>
+`;
+}
