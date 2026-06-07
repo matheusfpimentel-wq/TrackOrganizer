@@ -9,8 +9,13 @@ import {
   type MouseEvent,
 } from "react";
 import { windowRange } from "@/lib/virtual";
+import { loadColWidths, saveColWidths } from "@/lib/prefs";
+
+const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+  COLUMNS.map((c) => [c.key, c.width]),
+);
 import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
-import { camelotColor, displayValue, energyDots, formatDuration } from "@/lib/format";
+import { camelotColor, displayValue, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
 import { revealInFiles } from "@/lib/api";
 import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore";
@@ -90,6 +95,31 @@ export function TrackGrid() {
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Resizable, persisted column widths.
+  const [widths, setWidths] = useState<Record<string, number>>(() => loadColWidths(DEFAULT_WIDTHS));
+  useEffect(() => {
+    saveColWidths(widths);
+  }, [widths]);
+  const startResize = useCallback(
+    (e: MouseEvent, key: TagKey) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startW = widths[key] ?? 120;
+      const onMove = (ev: globalThis.MouseEvent) => {
+        const w = Math.max(50, startW + (ev.clientX - startX));
+        setWidths((prev) => ({ ...prev, [key]: w }));
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [widths],
+  );
 
   // Row virtualization (only kicks in for large libraries).
   const VIRT_THRESHOLD = 150;
@@ -354,18 +384,27 @@ export function TrackGrid() {
             <th className="sticky left-0 z-20 w-12 border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
               #
             </th>
-            {COLUMNS.map((col) => (
-              <th
-                key={col.key}
-                style={{ width: col.width, minWidth: col.width }}
-                onClick={(e) => (e.altKey ? selectColumn(col) : toggleSort(col.key))}
-                className="cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
-                title="Clique para ordenar · Alt+clique para selecionar a coluna"
-              >
-                {col.label}
-                {sort?.col === col.key && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
-              </th>
-            ))}
+            {COLUMNS.map((col) => {
+              const w = widths[col.key] ?? col.width;
+              return (
+                <th
+                  key={col.key}
+                  style={{ width: w, minWidth: w }}
+                  onClick={(e) => (e.altKey ? selectColumn(col) : toggleSort(col.key))}
+                  className="relative cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
+                  title="Clique para ordenar · Alt+clique para selecionar a coluna"
+                >
+                  {col.label}
+                  {sort?.col === col.key && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+                  <span
+                    onMouseDown={(e) => startResize(e, col.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/50"
+                    title="Arraste para redimensionar"
+                  />
+                </th>
+              );
+            })}
             <th
               onClick={() => toggleSort("duration")}
               className="cursor-pointer select-none border border-border px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground hover:text-foreground"
@@ -429,7 +468,8 @@ export function TrackGrid() {
                 const value = row.edited[col.key];
                 const keyColor =
                   col.key === "key" && typeof value === "string" ? camelotColor(value) : null;
-                const cellStyle: CSSProperties = { width: col.width, minWidth: col.width };
+                const w = widths[col.key] ?? col.width;
+                const cellStyle: CSSProperties = { width: w, minWidth: w };
                 if (keyColor && !selected && !isEditing) {
                   cellStyle.backgroundColor = keyColor;
                 }
@@ -460,11 +500,25 @@ export function TrackGrid() {
                         className="w-full bg-transparent text-foreground outline-none"
                       />
                     ) : col.key === "energy" ? (
-                      <span
-                        className={cn("block tracking-tight", dirty && "text-dirty")}
-                        title={value !== null ? `Energia ${value}/5` : ""}
-                      >
-                        {energyDots(typeof value === "number" ? value : null)}
+                      <span className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((n) => {
+                          const filled = typeof value === "number" && value >= n;
+                          return (
+                            <button
+                              key={n}
+                              aria-label={`Energia ${n}`}
+                              title={`Definir energia ${n}`}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCell(row.id, "energy", String(n));
+                              }}
+                              className={cn(filled ? "text-dirty" : "text-muted-foreground/40", "leading-none")}
+                            >
+                              {filled ? "●" : "○"}
+                            </button>
+                          );
+                        })}
                       </span>
                     ) : (
                       <span className={cn("block truncate", dirty && "text-dirty")}>

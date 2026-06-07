@@ -196,7 +196,7 @@ export function Toolbar({ onOpenSettings }: Props) {
 
           <div className="mx-1 h-6 w-px bg-border" />
 
-          <Button variant="ghost" size="sm" onClick={onOpenSettings} title="Configurações">
+          <Button variant="ghost" size="sm" onClick={onOpenSettings} title="Configurações" aria-label="Configurações">
             ⚙
           </Button>
         </div>
