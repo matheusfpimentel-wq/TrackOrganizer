@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore";
 import { downloadText, rowsToCsv, rowsToTxt } from "@/lib/export";
+import { saveTextFile } from "@/lib/api";
+import { toRekordboxXml } from "@/lib/setlistExport";
 
 interface Props {
   onOpenSettings: () => void;
@@ -10,6 +12,7 @@ interface Props {
 
 export function Toolbar({ onOpenSettings }: Props) {
   const scan = useLibraryStore((s) => s.scan);
+  const importLibrary = useLibraryStore((s) => s.importLibrary);
   const scanning = useLibraryStore((s) => s.scanning);
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
@@ -26,6 +29,8 @@ export function Toolbar({ onOpenSettings }: Props) {
   const lens = useLibraryStore((s) => s.lens);
   const lastWrite = useLibraryStore((s) => s.lastWrite);
   const undoLastWrite = useLibraryStore((s) => s.undoLastWrite);
+  const setSetlistOpen = useLibraryStore((s) => s.setSetlistOpen);
+  const setlistCount = useLibraryStore((s) => s.setlist.length);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -33,6 +38,13 @@ export function Toolbar({ onOpenSettings }: Props) {
   );
   const pendingCount = useMemo(() => rows.filter((r) => r.suggested).length, [rows]);
   const dirtyCount = useMemo(() => rows.filter((r) => r.status === "ready_to_write").length, [rows]);
+
+  const exportCollectionXml = () => {
+    const entries = visible.map((row) => ({ row, note: "" }));
+    void saveTextFile("rekordbox.xml", toRekordboxXml(entries, "Tracklistr Collection"), [
+      { name: "Rekordbox XML", extensions: ["xml"] },
+    ]);
+  };
 
   const onWrite = async () => {
     if (dirtyCount === 0) {
@@ -52,6 +64,14 @@ export function Toolbar({ onOpenSettings }: Props) {
       <div className="flex items-center gap-2 px-3 py-2">
         <Button onClick={() => void scan()} disabled={scanning}>
           {scanning ? "Escaneando…" : "Abrir pasta"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void importLibrary()}
+          disabled={scanning}
+          title="Importar coleção Rekordbox (.xml) ou playlist (.m3u8)"
+        >
+          Importar
         </Button>
 
         <div className="mx-1 h-6 w-px bg-border" />
@@ -79,6 +99,18 @@ export function Toolbar({ onOpenSettings }: Props) {
             onClick={() => downloadText("tracklist.txt", rowsToTxt(visible))}
           >
             TXT
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={visible.length === 0}
+            onClick={exportCollectionXml}
+            title="Exportar a coleção visível como rekordbox.xml"
+          >
+            RB XML
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setSetlistOpen(true)}>
+            Setlist{setlistCount > 0 ? ` (${setlistCount})` : ""}
           </Button>
 
           <div className="mx-1 h-6 w-px bg-border" />

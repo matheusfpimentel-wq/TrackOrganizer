@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AiSuggestion, ScannedTrack, TrackTags } from "@/types/track";
 import { mockAiSuggestions, SAMPLE_TRACKS } from "@/lib/sampleData";
+import { downloadText } from "@/lib/export";
 
 /** True when running inside the Tauri webview (vs. a plain browser tab). */
 export function isTauri(): boolean {
@@ -19,6 +20,33 @@ export async function pickFolder(): Promise<string | null> {
     return selected;
   }
   return null;
+}
+
+/** Native file picker with optional extension filters. */
+export async function pickFile(
+  filters?: { name: string; extensions: string[] }[],
+): Promise<string | null> {
+  if (!isTauri()) {
+    return "dev.xml";
+  }
+  const selected = await open(filters ? { multiple: false, filters } : { multiple: false });
+  return typeof selected === "string" ? selected : null;
+}
+
+/** Import a rekordbox collection XML (reads referenced files from disk). */
+export async function importRekordboxXml(path: string): Promise<ScannedTrack[]> {
+  if (!isTauri()) {
+    return SAMPLE_TRACKS;
+  }
+  return invoke<ScannedTrack[]>("import_rekordbox_xml", { path });
+}
+
+/** Import an M3U/M3U8 playlist. */
+export async function importM3u(path: string): Promise<ScannedTrack[]> {
+  if (!isTauri()) {
+    return SAMPLE_TRACKS;
+  }
+  return invoke<ScannedTrack[]>("import_m3u", { path });
 }
 
 /** Recursively scan a folder for audio files and read their tags. */
@@ -64,6 +92,27 @@ export async function writeTags(items: WriteRequest[]): Promise<WriteOutcome> {
     };
   }
   return invoke<WriteOutcome>("write_tags", { items });
+}
+
+/**
+ * Save text to disk via the native save dialog (browser fallback: download).
+ * Returns the chosen path, or null if cancelled.
+ */
+export async function saveTextFile(
+  defaultName: string,
+  content: string,
+  filters?: { name: string; extensions: string[] }[],
+): Promise<string | null> {
+  if (!isTauri()) {
+    downloadText(defaultName, content);
+    return defaultName;
+  }
+  const path = await save(filters ? { defaultPath: defaultName, filters } : { defaultPath: defaultName });
+  if (!path) {
+    return null;
+  }
+  await invoke("write_text_file", { path, content });
+  return path;
 }
 
 /** Restore tags from a backup JSON (undo last write). */
