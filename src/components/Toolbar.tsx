@@ -32,6 +32,9 @@ export function Toolbar({ onOpenSettings }: Props) {
   const setlistCount = useLibraryStore((s) => s.setlist.length);
   const setWriteConfirmOpen = useLibraryStore((s) => s.setWriteConfirmOpen);
   const provider = useLibraryStore((s) => s.config.provider);
+  const runDeepScan = useLibraryStore((s) => s.runDeepScan);
+  const deepScanRunning = useLibraryStore((s) => s.deepScanRunning);
+  const deepScanProgress = useLibraryStore((s) => s.deepScanProgress);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -125,6 +128,18 @@ export function Toolbar({ onOpenSettings }: Props) {
               Revisar ({pendingCount})
             </Button>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={deepScanRunning || selection.size === 0}
+            onClick={() => void runDeepScan()}
+            title="Análise de áudio das faixas selecionadas (corte de frequência / fake 320)"
+          >
+            {deepScanRunning && deepScanProgress
+              ? `Deep Scan ${deepScanProgress.done}/${deepScanProgress.total}…`
+              : "Deep Scan"}
+          </Button>
 
           <Button
             variant="default"

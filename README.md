@@ -246,6 +246,19 @@ transição** que você escreveu entre as faixas — pra imprimir ou abrir no ce
 
 ---
 
+## 🔬 Deep Scan (análise de áudio, sob demanda)
+
+Selecione faixas e clique **Deep Scan**. Para cada uma, o backend **decodifica o áudio**
+(symphonia) e roda **FFT** (rustfft) para medir o **corte de frequência** real:
+
+- Mostra **kHz de corte**, **bitrate**, **sample rate** e um **veredito**.
+- Marca como **suspeito de transcode ("fake 320")** quando um arquivo lossless ou ≥256 kbps
+  tem corte abaixo de ~16 kHz (sinal clássico de upscale de um MP3 ruim).
+
+> É pesado (decodifica + FFT), por isso roda **sob demanda** nas faixas selecionadas, com
+> progresso. **Fase 2:** duplicatas por *fingerprint* acústico (Chromaprint/`fpcalc`) e
+> detecção de cues/estrutura para gerar Memory Cues por plataforma.
+
 ## Validação feita
 
 - `npm run build` (tsc strict + vite) — **OK**

@@ -4,6 +4,7 @@ import {
   emptyTags,
   type AiField,
   type AiSuggestion,
+  type DeepScanResult,
   type ScannedTrack,
   type TagKey,
   type TrackRow,
@@ -59,6 +60,12 @@ interface LibraryState {
   setlist: { rowId: string; note: string }[];
   setlistOpen: boolean;
 
+  /** Deep-scan results keyed by row id. */
+  deepScan: Record<string, DeepScanResult>;
+  deepScanRunning: boolean;
+  deepScanProgress: { done: number; total: number } | null;
+  deepScanOpen: boolean;
+
   scan: () => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -93,6 +100,9 @@ interface LibraryState {
   moveSetlistItem: (index: number, dir: -1 | 1) => void;
   setTransitionNote: (index: number, note: string) => void;
   clearSetlist: () => void;
+
+  runDeepScan: () => Promise<void>;
+  setDeepScanOpen: (open: boolean) => void;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -248,6 +258,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setlist: [],
   setlistOpen: false,
+
+  deepScan: {},
+  deepScanRunning: false,
+  deepScanProgress: null,
+  deepScanOpen: false,
 
   scan: async () => {
     set({ globalError: null });
@@ -587,6 +602,37 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   clearSetlist: () => set({ setlist: [] }),
+
+  runDeepScan: async () => {
+    const { rows, selection } = get();
+    const ids = new Set<string>();
+    for (const key of selection) {
+      const sep = key.indexOf("::");
+      if (sep > 0) {
+        ids.add(key.slice(0, sep));
+      }
+    }
+    const targets = rows.filter((r) => ids.has(r.id) && !r.error);
+    if (targets.length === 0) {
+      set({ globalError: "Selecione faixas para o Deep Scan." });
+      return;
+    }
+    set({ deepScanRunning: true, deepScanProgress: { done: 0, total: targets.length }, globalError: null });
+    let done = 0;
+    for (const row of targets) {
+      try {
+        const result = await api.deepScan(row.filePath);
+        set((state) => ({ deepScan: { ...state.deepScan, [row.id]: result } }));
+      } catch (err) {
+        set({ globalError: `Deep Scan falhou em ${row.fileName}: ${String(err)}` });
+      }
+      done += 1;
+      set({ deepScanProgress: { done, total: targets.length } });
+    }
+    set({ deepScanRunning: false, deepScanProgress: null, deepScanOpen: true });
+  },
+
+  setDeepScanOpen: (open) => set({ deepScanOpen: open }),
 }));
 
 /**
