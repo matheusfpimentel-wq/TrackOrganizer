@@ -3,7 +3,13 @@ import { Button } from "@/components/ui/button";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { exportSeratoCrate, saveTextFile } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
-import { toM3u8, toRekordboxXml, toRoteiroTxt, type SetlistEntry } from "@/lib/setlistExport";
+import {
+  toM3u8,
+  toRekordboxXml,
+  toRoteiroTxt,
+  toTraktorNml,
+  type SetlistEntry,
+} from "@/lib/setlistExport";
 
 const PLAYLIST_NAME = "Tracklistr Setlist";
 
@@ -52,7 +58,7 @@ export function SetlistPanel() {
     addToSetlist([...ids]);
   };
 
-  const exportAs = async (kind: "m3u8" | "rekordbox" | "roteiro") => {
+  const exportAs = async (kind: "m3u8" | "rekordbox" | "traktor" | "roteiro") => {
     if (entries.length === 0) {
       return;
     }
@@ -63,6 +69,10 @@ export function SetlistPanel() {
     } else if (kind === "rekordbox") {
       await saveTextFile("rekordbox.xml", toRekordboxXml(entries, PLAYLIST_NAME), [
         { name: "Rekordbox XML", extensions: ["xml"] },
+      ]);
+    } else if (kind === "traktor") {
+      await saveTextFile("collection.nml", toTraktorNml(entries, PLAYLIST_NAME), [
+        { name: "Traktor NML", extensions: ["nml"] },
       ]);
     } else {
       await saveTextFile("setlist-roteiro.txt", toRoteiroTxt(entries), [
@@ -187,7 +197,16 @@ export function SetlistPanel() {
           <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={exportCrate}>
             Serato .crate
           </Button>
-          <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={() => void exportAs("roteiro")}>
+          <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={() => void exportAs("traktor")}>
+            Traktor .nml
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="col-span-2"
+            disabled={entries.length === 0}
+            onClick={() => void exportAs("roteiro")}
+          >
             Roteiro .txt
           </Button>
         </div>
