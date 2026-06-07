@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { AiSuggestion, ScannedTrack, TrackTags } from "@/types/track";
+import type { AiSuggestion, DeepScanResult, ScannedTrack, TrackTags } from "@/types/track";
 import { mockAiSuggestions, SAMPLE_TRACKS } from "@/lib/sampleData";
 import { downloadText } from "@/lib/export";
 
@@ -69,6 +69,27 @@ export async function revealInFiles(path: string): Promise<void> {
     return;
   }
   await invoke("reveal_in_files", { path });
+}
+
+/** Deep per-track audio analysis (spectral cutoff / fake-320 heuristic). */
+export async function deepScan(path: string): Promise<DeepScanResult> {
+  if (!isTauri()) {
+    // Dev stub: flag bootleg/insomnia samples as suspect for demo purposes.
+    const suspect = /bootleg|insomnia|bonbon-2/i.test(path);
+    const cutoffHz = suspect ? 15500 : 20500;
+    return {
+      filePath: path,
+      sampleRateHz: 44100,
+      channels: 2,
+      bitrateKbps: suspect ? 320 : 1411,
+      cutoffHz,
+      suspectTranscode: suspect,
+      note: suspect
+        ? `Corte em ~${(cutoffHz / 1000).toFixed(1)} kHz apesar de 320 kbps — provável transcode (fake).`
+        : `Corte em ~${(cutoffHz / 1000).toFixed(1)} kHz — consistente.`,
+    };
+  }
+  return invoke<DeepScanResult>("deep_scan", { path });
 }
 
 export interface WriteRequest {

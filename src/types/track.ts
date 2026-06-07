@@ -100,6 +100,17 @@ export interface AiSuggestion {
   energy?: number;
 }
 
+/** Result of the on-demand deep audio analysis. */
+export interface DeepScanResult {
+  filePath: string;
+  sampleRateHz: number;
+  channels: number;
+  bitrateKbps: number | null;
+  cutoffHz: number;
+  suspectTranscode: boolean;
+  note: string;
+}
+
 /** Build an empty tag set. */
 export function emptyTags(): TrackTags {
   return {

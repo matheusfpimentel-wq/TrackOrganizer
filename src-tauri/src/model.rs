@@ -104,6 +104,21 @@ pub struct AiResponse {
     pub suggestions: Vec<AiSuggestion>,
 }
 
+/// Result of the on-demand per-track deep audio analysis.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepScanResult {
+    pub file_path: String,
+    pub sample_rate_hz: u32,
+    pub channels: u32,
+    pub bitrate_kbps: Option<u32>,
+    /// Highest frequency (Hz) still carrying real energy.
+    pub cutoff_hz: u32,
+    /// True when a high-bitrate/lossless file looks like a transcode (fake).
+    pub suspect_transcode: bool,
+    pub note: String,
+}
+
 /// Public view of the local config (never exposes the API key to the frontend).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

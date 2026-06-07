@@ -1,6 +1,7 @@
 mod ai;
 mod commands;
 mod config;
+mod deepscan;
 mod import;
 mod model;
 mod scan;
@@ -20,6 +21,7 @@ pub fn run() {
             commands::reveal_in_files,
             commands::import_rekordbox_xml,
             commands::import_m3u,
+            commands::deep_scan,
             config::get_config,
             config::update_config,
             config::clear_api_key,

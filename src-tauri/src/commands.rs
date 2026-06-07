@@ -1,5 +1,5 @@
-use crate::model::{ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult};
-use crate::{import, scan, tags};
+use crate::model::{DeepScanResult, ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult};
+use crate::{deepscan, import, scan, tags};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -112,4 +112,10 @@ pub fn import_rekordbox_xml(path: String) -> Result<Vec<ScannedTrack>, String> {
 #[tauri::command]
 pub fn import_m3u(path: String) -> Result<Vec<ScannedTrack>, String> {
     import::import_m3u(&path)
+}
+
+/// Deep per-track audio analysis (spectral cutoff / fake-320 heuristic).
+#[tauri::command]
+pub fn deep_scan(path: String) -> Result<DeepScanResult, String> {
+    deepscan::analyze(&path)
 }
