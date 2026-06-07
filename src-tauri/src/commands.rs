@@ -1,5 +1,6 @@
 use crate::model::{
-    DeepScanResult, DupGroup, ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult,
+    DeepScanResult, DupGroup, ScannedTrack, StructureResult, TrackTags, WriteOutcome, WriteRequest,
+    WriteResult,
 };
 use crate::{deepscan, import, scan, tags};
 use std::fs;
@@ -126,4 +127,10 @@ pub fn deep_scan(path: String) -> Result<DeepScanResult, String> {
 #[tauri::command]
 pub fn find_audio_duplicates(paths: Vec<String>) -> Result<Vec<DupGroup>, String> {
     deepscan::find_audio_duplicates(&paths)
+}
+
+/// Detect structural cue points (intro / drops / breaks / outro) for a track.
+#[tauri::command]
+pub fn detect_cues(path: String) -> Result<StructureResult, String> {
+    deepscan::detect_cues(&path)
 }

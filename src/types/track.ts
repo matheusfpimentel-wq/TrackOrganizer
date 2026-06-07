@@ -117,6 +117,22 @@ export interface DupGroup {
   similarity: number;
 }
 
+/** A detected structural cue point. */
+export interface Cue {
+  positionSecs: number;
+  label: string;
+  kind: "intro" | "drop" | "build" | "break" | "outro";
+}
+
+/** Structure analysis: energy envelope + detected cues. */
+export interface StructureResult {
+  filePath: string;
+  durationSecs: number;
+  bpm: number | null;
+  envelope: number[];
+  cues: Cue[];
+}
+
 /** Build an empty tag set. */
 export function emptyTags(): TrackTags {
   return {

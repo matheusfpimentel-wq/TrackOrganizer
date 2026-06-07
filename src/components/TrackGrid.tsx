@@ -46,6 +46,7 @@ export function TrackGrid() {
   const clearCells = useLibraryStore((s) => s.clearCells);
   const resetRow = useLibraryStore((s) => s.resetRow);
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
+  const detectCues = useLibraryStore((s) => s.detectCues);
   const genres = useLibraryStore((s) => s.config.genres);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
@@ -458,6 +459,15 @@ export function TrackGrid() {
               }}
             >
               Adicionar à setlist
+            </button>
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent"
+              onClick={() => {
+                void detectCues(menu.row.id);
+                setMenu(null);
+              }}
+            >
+              Detectar cues / estrutura
             </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent"

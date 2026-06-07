@@ -119,6 +119,28 @@ pub struct DeepScanResult {
     pub note: String,
 }
 
+/// A detected structural cue point.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cue {
+    pub position_secs: f32,
+    pub label: String,
+    /// intro | drop | build | break | outro
+    pub kind: String,
+}
+
+/// Structure analysis: energy envelope + detected cues.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureResult {
+    pub file_path: String,
+    pub duration_secs: f32,
+    pub bpm: Option<u32>,
+    /// Normalized energy envelope (0..1) for drawing a mini-waveform.
+    pub envelope: Vec<f32>,
+    pub cues: Vec<Cue>,
+}
+
 /// A cluster of files detected as the same audio by fingerprint.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

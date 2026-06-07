@@ -7,6 +7,7 @@ import {
   type DeepScanResult,
   type DupGroup,
   type ScannedTrack,
+  type StructureResult,
   type TagKey,
   type TrackRow,
   type TrackTags,
@@ -72,6 +73,12 @@ interface LibraryState {
   audioDupRunning: boolean;
   audioDupOpen: boolean;
 
+  /** Structure / cue detection for the currently inspected track. */
+  structure: StructureResult | null;
+  structureName: string;
+  structureLoading: boolean;
+  cueOpen: boolean;
+
   scan: () => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -111,6 +118,8 @@ interface LibraryState {
   setDeepScanOpen: (open: boolean) => void;
   runAudioDuplicates: () => Promise<void>;
   setAudioDupOpen: (open: boolean) => void;
+  detectCues: (rowId: string) => Promise<void>;
+  setCueOpen: (open: boolean) => void;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -275,6 +284,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   audioDups: [],
   audioDupRunning: false,
   audioDupOpen: false,
+
+  structure: null,
+  structureName: "",
+  structureLoading: false,
+  cueOpen: false,
 
   scan: async () => {
     set({ globalError: null });
@@ -671,6 +685,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setAudioDupOpen: (open) => set({ audioDupOpen: open }),
+
+  detectCues: async (rowId) => {
+    const row = get().rows.find((r) => r.id === rowId);
+    if (!row || row.error) {
+      return;
+    }
+    set({ cueOpen: true, structureLoading: true, structure: null, structureName: row.fileName });
+    try {
+      const structure = await api.detectCues(row.filePath);
+      set({ structure, structureLoading: false });
+    } catch (err) {
+      set({ structureLoading: false, globalError: String(err) });
+    }
+  },
+
+  setCueOpen: (open) => set({ cueOpen: open }),
 }));
 
 /**

@@ -20,6 +20,11 @@ const CUTOFF_REL: f64 = 0.005; // ~ -46 dB
 
 /// Decode up to `MAX_SECONDS` of `path` to a mono f32 buffer + sample rate.
 fn decode_mono(path: &str) -> Result<(Vec<f32>, u32, u32), String> {
+    decode_mono_max(path, MAX_SECONDS)
+}
+
+/// Decode up to `max_seconds` of `path` to a mono f32 buffer (+ sample rate, channels).
+fn decode_mono_max(path: &str, max_seconds: usize) -> Result<(Vec<f32>, u32, u32), String> {
     let file = File::open(path).map_err(|e| format!("abrir: {e}"))?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -41,7 +46,7 @@ fn decode_mono(path: &str) -> Result<(Vec<f32>, u32, u32), String> {
         .make(&track.codec_params, &DecoderOptions::default())
         .map_err(|e| format!("codec: {e}"))?;
 
-    let max_samples = (sample_rate as usize).saturating_mul(MAX_SECONDS).max(FFT_SIZE * 8);
+    let max_samples = (sample_rate as usize).saturating_mul(max_seconds).max(FFT_SIZE * 8);
     let mut mono: Vec<f32> = Vec::with_capacity(max_samples.min(1 << 22));
 
     while mono.len() < max_samples {
@@ -321,4 +326,132 @@ pub fn find_audio_duplicates(paths: &[String]) -> Result<Vec<DupGroup>, String> 
         .collect();
     out.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
     Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Structure / cue detection (energy envelope → intro / drops / breaks / outro)
+// ---------------------------------------------------------------------------
+
+use crate::model::{Cue, StructureResult};
+
+/// Up to 12 minutes of audio is analyzed for structure.
+const CUE_MAX_SECONDS: usize = 720;
+const ENV_POINTS: usize = 240;
+
+fn smooth(values: &[f32], radius: usize) -> Vec<f32> {
+    if radius == 0 {
+        return values.to_vec();
+    }
+    let n = values.len();
+    let mut out = vec![0f32; n];
+    for i in 0..n {
+        let lo = i.saturating_sub(radius);
+        let hi = (i + radius + 1).min(n);
+        let slice = &values[lo..hi];
+        out[i] = slice.iter().sum::<f32>() / slice.len() as f32;
+    }
+    out
+}
+
+/// Detect a handful of useful cue points from the energy envelope.
+pub fn detect_cues(path: &str) -> Result<StructureResult, String> {
+    let (mono, sample_rate, _ch) = decode_mono_max(path, CUE_MAX_SECONDS)?;
+    let duration_secs = mono.len() as f32 / sample_rate as f32;
+
+    // Coarse RMS energy at ~0.1 s per frame.
+    let frame = ((sample_rate as f32 * 0.1) as usize).max(1);
+    let mut energy: Vec<f32> = Vec::with_capacity(mono.len() / frame + 1);
+    let mut i = 0;
+    while i + frame <= mono.len() {
+        let mut sum = 0f32;
+        for &s in &mono[i..i + frame] {
+            sum += s * s;
+        }
+        energy.push((sum / frame as f32).sqrt());
+        i += frame;
+    }
+    if energy.len() < 8 {
+        return Err("faixa curta demais para detectar estrutura".into());
+    }
+
+    let env = smooth(&energy, 5);
+    let peak = env.iter().copied().fold(0f32, f32::max).max(1e-9);
+    let frame_secs = frame as f32 / sample_rate as f32;
+    let to_secs = |idx: usize| idx as f32 * frame_secs;
+
+    // Downsampled, normalized envelope for the UI waveform.
+    let mut envelope = vec![0f32; ENV_POINTS];
+    for (p, slot) in envelope.iter_mut().enumerate() {
+        let lo = p * env.len() / ENV_POINTS;
+        let hi = ((p + 1) * env.len() / ENV_POINTS).max(lo + 1).min(env.len());
+        let avg = env[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
+        *slot = (avg / peak).clamp(0.0, 1.0);
+    }
+
+    let mut cues: Vec<Cue> = Vec::new();
+
+    // Intro: first frame with real energy.
+    if let Some(idx) = env.iter().position(|&e| e > 0.12 * peak) {
+        cues.push(Cue { position_secs: to_secs(idx), label: "Início".into(), kind: "intro".into() });
+    }
+
+    // Onsets: large positive/negative changes in smoothed energy.
+    let min_gap = (8.0 / frame_secs) as usize; // ~8 s apart
+    let look = (2.0 / frame_secs) as usize; // 2 s lookahead for level
+    let mut candidates: Vec<(usize, f32)> = Vec::new();
+    for n in 1..env.len() {
+        candidates.push((n, env[n] - env[n - 1]));
+    }
+    candidates.sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(std::cmp::Ordering::Equal));
+
+    let change_thresh = 0.10 * peak;
+    let mut chosen: Vec<usize> = Vec::new();
+    for (idx, delta) in candidates {
+        if delta.abs() < change_thresh {
+            break;
+        }
+        if chosen.iter().any(|&c| c.abs_diff(idx) < min_gap) {
+            continue;
+        }
+        let after = {
+            let hi = (idx + look).min(env.len());
+            env[idx..hi].iter().sum::<f32>() / (hi - idx).max(1) as f32
+        };
+        let (label, kind) = if delta > 0.0 {
+            if after > 0.6 * peak {
+                ("Drop", "drop")
+            } else {
+                ("Build", "build")
+            }
+        } else {
+            ("Quebra/Break", "break")
+        };
+        cues.push(Cue { position_secs: to_secs(idx), label: label.into(), kind: kind.into() });
+        chosen.push(idx);
+        if chosen.len() >= 6 {
+            break;
+        }
+    }
+
+    // Outro: last frame still carrying energy.
+    if let Some(rev) = env.iter().rposition(|&e| e > 0.35 * peak) {
+        let secs = to_secs(rev);
+        if secs > duration_secs * 0.5 {
+            cues.push(Cue { position_secs: secs, label: "Outro".into(), kind: "outro".into() });
+        }
+    }
+
+    cues.sort_by(|a, b| a.position_secs.partial_cmp(&b.position_secs).unwrap_or(std::cmp::Ordering::Equal));
+    // Drop cues that are within 3 s of the previous one (keep the earlier).
+    let mut deduped: Vec<Cue> = Vec::new();
+    for c in cues {
+        if deduped.last().map(|p| (c.position_secs - p.position_secs).abs() < 3.0).unwrap_or(false) {
+            continue;
+        }
+        deduped.push(c);
+    }
+
+    let bpm = crate::tags::read_tags(path).ok().and_then(|t| t.bpm);
+
+    Ok(StructureResult { file_path: path.to_string(), duration_secs, bpm, envelope, cues: deduped })
 }
