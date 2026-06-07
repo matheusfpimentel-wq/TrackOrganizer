@@ -255,9 +255,16 @@ Selecione faixas e clique **Deep Scan**. Para cada uma, o backend **decodifica o
 - Marca como **suspeito de transcode ("fake 320")** quando um arquivo lossless ou ≥256 kbps
   tem corte abaixo de ~16 kHz (sinal clássico de upscale de um MP3 ruim).
 
-> É pesado (decodifica + FFT), por isso roda **sob demanda** nas faixas selecionadas, com
-> progresso. **Fase 2:** duplicatas por *fingerprint* acústico (Chromaprint/`fpcalc`) e
-> detecção de cues/estrutura para gerar Memory Cues por plataforma.
+> É pesado (decodifica + FFT), por isso roda **sob demanda** nas faixas selecionadas, com progresso.
+
+**Duplicatas por áudio (fingerprint):** o botão **Dup. áudio** gera um *fingerprint* acústico
+pure-Rust (estilo Haitsma-Kalker: bandas log + 2ª diferença → sub-fingerprints de 32 bits) e
+agrupa faixas com o **mesmo áudio**, **ignorando nome/tags** (pega cópias renomeadas e
+re-encodes). Compara por *bit error rate* com busca de alinhamento; agrupa acima de 80% de
+semelhança. Usa a seleção ou a biblioteca inteira.
+
+> **Fase seguinte:** detecção de cues/estrutura (drops/breaks) para gerar Memory Cues por
+> plataforma, fechando a Fase 2 de integração (Serato `.crate`/GEOB e Traktor `.nml`).
 
 ## Validação feita
 

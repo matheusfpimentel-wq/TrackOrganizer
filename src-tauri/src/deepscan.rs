@@ -1,4 +1,4 @@
-use crate::model::DeepScanResult;
+use crate::model::{DeepScanResult, DupGroup};
 use lofty::file::AudioFile;
 use lofty::probe::Probe;
 use rustfft::{num_complex::Complex, FftPlanner};
@@ -155,4 +155,170 @@ pub fn analyze(path: &str) -> Result<DeepScanResult, String> {
         suspect_transcode,
         note,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Acoustic fingerprint (Haitsma-Kalker style) + duplicate clustering
+// ---------------------------------------------------------------------------
+
+const FP_FFT: usize = 4096;
+const FP_BANDS: usize = 33; // 33 bands -> 32 bits per sub-fingerprint
+const FP_MIN_HZ: f32 = 300.0;
+const FP_MAX_HZ: f32 = 2000.0;
+/// Min similarity (1 - bit error rate) to consider two tracks the same audio.
+const DUP_THRESHOLD: f32 = 0.80;
+
+/// Log-spaced FFT-bin edges for the 33 bands (length 34).
+fn band_edges(sample_rate: u32) -> [usize; FP_BANDS + 1] {
+    let mut edges = [0usize; FP_BANDS + 1];
+    let ratio = FP_MAX_HZ / FP_MIN_HZ;
+    for (i, edge) in edges.iter_mut().enumerate() {
+        let f = FP_MIN_HZ * ratio.powf(i as f32 / FP_BANDS as f32);
+        let bin = (f * FP_FFT as f32 / sample_rate as f32).round() as usize;
+        *edge = bin.min(FP_FFT / 2 - 1);
+    }
+    edges
+}
+
+/// Compute the sub-fingerprint sequence (one u32 per frame) for a file.
+pub fn fingerprint(path: &str) -> Result<Vec<u32>, String> {
+    let (mono, sample_rate, _ch) = decode_mono(path)?;
+    let edges = band_edges(sample_rate);
+
+    let hann: Vec<f32> = (0..FP_FFT)
+        .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / (FP_FFT as f32 - 1.0)).cos())
+        .collect();
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(FP_FFT);
+    let hop = FP_FFT / 2;
+
+    // Per-frame band energies.
+    let mut frames: Vec<[f64; FP_BANDS]> = Vec::new();
+    let mut pos = 0usize;
+    while pos + FP_FFT <= mono.len() {
+        let mut buf: Vec<Complex<f32>> = (0..FP_FFT)
+            .map(|i| Complex { re: mono[pos + i] * hann[i], im: 0.0 })
+            .collect();
+        fft.process(&mut buf);
+        let mut bands = [0f64; FP_BANDS];
+        for (m, band) in bands.iter_mut().enumerate() {
+            let lo = edges[m];
+            let hi = edges[m + 1].max(lo + 1);
+            let mut e = 0f64;
+            for c in &buf[lo..hi] {
+                let mag = c.norm() as f64;
+                e += mag * mag;
+            }
+            *band = e;
+        }
+        frames.push(bands);
+        pos += hop;
+    }
+
+    // Sub-fingerprints: sign of the second difference (time × band).
+    let mut fp = Vec::with_capacity(frames.len().saturating_sub(1));
+    for n in 1..frames.len() {
+        let cur = &frames[n];
+        let prev = &frames[n - 1];
+        let mut bits = 0u32;
+        for m in 0..(FP_BANDS - 1) {
+            let d = (cur[m] - cur[m + 1]) - (prev[m] - prev[m + 1]);
+            if d > 0.0 {
+                bits |= 1 << m;
+            }
+        }
+        fp.push(bits);
+    }
+    Ok(fp)
+}
+
+/// Best similarity (1 - min bit-error-rate) between two fingerprint sequences,
+/// searching a small alignment offset.
+fn similarity(a: &[u32], b: &[u32]) -> f32 {
+    const MAX_OFFSET: isize = 80;
+    const MIN_OVERLAP: u64 = 50;
+    let mut best = 1.0f32;
+    let mut matched = false;
+    for off in -MAX_OFFSET..=MAX_OFFSET {
+        let mut bits = 0u64;
+        let mut cnt = 0u64;
+        for (i, &av) in a.iter().enumerate() {
+            let j = i as isize + off;
+            if j < 0 || j as usize >= b.len() {
+                continue;
+            }
+            bits += (av ^ b[j as usize]).count_ones() as u64;
+            cnt += 1;
+        }
+        if cnt >= MIN_OVERLAP {
+            matched = true;
+            let e = bits as f32 / (cnt as f32 * 32.0);
+            if e < best {
+                best = e;
+            }
+        }
+    }
+    if matched {
+        1.0 - best
+    } else {
+        0.0
+    }
+}
+
+/// Fingerprint each path and cluster files that share the same audio.
+pub fn find_audio_duplicates(paths: &[String]) -> Result<Vec<DupGroup>, String> {
+    let prints: Vec<(String, Vec<u32>)> = paths
+        .iter()
+        .filter_map(|p| fingerprint(p).ok().map(|fp| (p.clone(), fp)))
+        .filter(|(_, fp)| fp.len() as u64 >= 50)
+        .collect();
+
+    let n = prints.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while parent[r] != r {
+            r = parent[r];
+        }
+        let mut c = x;
+        while parent[c] != r {
+            let next = parent[c];
+            parent[c] = r;
+            c = next;
+        }
+        r
+    }
+
+    // Track the minimum pairwise similarity within each merged pair.
+    let mut best_sim = vec![0f32; n];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let sim = similarity(&prints[i].1, &prints[j].1);
+            if sim >= DUP_THRESHOLD {
+                let ri = find(&mut parent, i);
+                let rj = find(&mut parent, j);
+                if ri != rj {
+                    parent[ri] = rj;
+                }
+                best_sim[i] = best_sim[i].max(sim);
+                best_sim[j] = best_sim[j].max(sim);
+            }
+        }
+    }
+
+    let mut groups: std::collections::HashMap<usize, (Vec<String>, f32)> = std::collections::HashMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        let entry = groups.entry(root).or_insert_with(|| (Vec::new(), 0.0));
+        entry.0.push(prints[i].0.clone());
+        entry.1 = entry.1.max(best_sim[i]);
+    }
+
+    let mut out: Vec<DupGroup> = groups
+        .into_values()
+        .filter(|(files, _)| files.len() > 1)
+        .map(|(files, similarity)| DupGroup { files, similarity })
+        .collect();
+    out.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(out)
 }

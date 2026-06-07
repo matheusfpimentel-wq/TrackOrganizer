@@ -1,4 +1,6 @@
-use crate::model::{DeepScanResult, ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult};
+use crate::model::{
+    DeepScanResult, DupGroup, ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult,
+};
 use crate::{deepscan, import, scan, tags};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -118,4 +120,10 @@ pub fn import_m3u(path: String) -> Result<Vec<ScannedTrack>, String> {
 #[tauri::command]
 pub fn deep_scan(path: String) -> Result<DeepScanResult, String> {
     deepscan::analyze(&path)
+}
+
+/// Cluster files that share the same audio via acoustic fingerprint.
+#[tauri::command]
+pub fn find_audio_duplicates(paths: Vec<String>) -> Result<Vec<DupGroup>, String> {
+    deepscan::find_audio_duplicates(&paths)
 }

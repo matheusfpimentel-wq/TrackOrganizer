@@ -35,6 +35,8 @@ export function Toolbar({ onOpenSettings }: Props) {
   const runDeepScan = useLibraryStore((s) => s.runDeepScan);
   const deepScanRunning = useLibraryStore((s) => s.deepScanRunning);
   const deepScanProgress = useLibraryStore((s) => s.deepScanProgress);
+  const runAudioDuplicates = useLibraryStore((s) => s.runAudioDuplicates);
+  const audioDupRunning = useLibraryStore((s) => s.audioDupRunning);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -139,6 +141,16 @@ export function Toolbar({ onOpenSettings }: Props) {
             {deepScanRunning && deepScanProgress
               ? `Deep Scan ${deepScanProgress.done}/${deepScanProgress.total}…`
               : "Deep Scan"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={audioDupRunning || rows.length < 2}
+            onClick={() => void runAudioDuplicates()}
+            title="Detectar duplicatas pelo áudio (fingerprint) — usa a seleção ou a biblioteca toda"
+          >
+            {audioDupRunning ? "Comparando…" : "Dup. áudio"}
           </Button>
 
           <Button
