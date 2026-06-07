@@ -108,7 +108,11 @@ export function SetlistPanel() {
               {totalSecs > 0 ? ` · ${formatDuration(totalSecs)} de set` : ""}
             </p>
           </div>
-          <button className="text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
+          <button
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar"
+          >
             ✕
           </button>
         </div>
@@ -172,7 +176,7 @@ export function SetlistPanel() {
                           className="px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                           onClick={() => moveSetlistItem(i, -1)}
                           disabled={i === 0}
-                          title="Subir"
+                          title="Subir" aria-label="Subir"
                         >
                           ▲
                         </button>
@@ -180,7 +184,7 @@ export function SetlistPanel() {
                           className="px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30"
                           onClick={() => moveSetlistItem(i, 1)}
                           disabled={i === entries.length - 1}
-                          title="Descer"
+                          title="Descer" aria-label="Descer"
                         >
                           ▼
                         </button>
@@ -188,7 +192,7 @@ export function SetlistPanel() {
                       <button
                         className="shrink-0 px-1 text-xs text-danger hover:opacity-80"
                         onClick={() => removeFromSetlist(i)}
-                        title="Remover"
+                        title="Remover" aria-label="Remover"
                       >
                         ✕
                       </button>

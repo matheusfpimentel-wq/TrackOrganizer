@@ -16,8 +16,12 @@ priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · �
 - **Undo/redo de edições** (`Ctrl+Z`/`Ctrl+Y`) (item 15)
 - **Drag-and-drop na setlist** (item 16)
 - **Virtualização da tabela** para bibliotecas grandes (item 6)
+- **Colunas redimensionáveis** + **persistência das larguras** (itens 20, 21)
+- **Energia clicável** (clique no ●○ para setar 1–5) (item 19)
+- **Acessibilidade**: aria-labels nos botões de ícone (item 18)
 
-Pendentes abaixo (mantidos para próximas levas).
+Pendentes (próximas levas): thumbnails de capa, persistir filtros/lente, i18n,
+e produto: assinatura/notarização, beat-grid/snap dos cues, cues Serato em FLAC/M4A.
 
 ## Prioridade alta (maior impacto no uso real de DJ)
 
