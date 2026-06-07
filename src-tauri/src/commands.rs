@@ -77,6 +77,31 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| format!("escrever arquivo: {e}"))
 }
 
+/// Reveal a file in the OS file manager (Finder / Explorer / default).
+#[tauri::command]
+pub fn reveal_in_files(path: String) -> Result<(), String> {
+    use std::process::Command;
+    let result = {
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open").arg("-R").arg(&path).spawn()
+        }
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("explorer").arg(format!("/select,{path}")).spawn()
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let dir = std::path::Path::new(&path)
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
+            Command::new("xdg-open").arg(dir).spawn()
+        }
+    };
+    result.map(|_| ()).map_err(|e| format!("revelar arquivo: {e}"))
+}
+
 /// Import a rekordbox collection XML into our track model.
 #[tauri::command]
 pub fn import_rekordbox_xml(path: String) -> Result<Vec<ScannedTrack>, String> {

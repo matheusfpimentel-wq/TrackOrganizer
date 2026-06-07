@@ -5,6 +5,7 @@ import { StatusBar } from "@/components/StatusBar";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { DiffReview } from "@/components/DiffReview";
 import { SetlistPanel } from "@/components/SetlistPanel";
+import { WriteConfirm } from "@/components/WriteConfirm";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <DiffReview />
       <SetlistPanel />
+      <WriteConfirm />
 
       {writeResult && (
         <div className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-background px-4 py-3 text-sm shadow-xl">

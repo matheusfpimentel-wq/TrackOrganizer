@@ -1,12 +1,27 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
-import { displayValue } from "@/lib/format";
+import { camelotColor, displayValue, energyDots, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
+import { revealInFiles } from "@/lib/api";
 import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore";
 
 interface EditingCell {
   rowId: string;
   colKey: TagKey;
+}
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  row: TrackRow;
 }
 
 const STATUS_COLOR: Record<TrackRow["status"], string> = {
@@ -27,6 +42,10 @@ export function TrackGrid() {
   const setAnchor = useLibraryStore((s) => s.setAnchor);
   const setCell = useLibraryStore((s) => s.setCell);
   const clearCells = useLibraryStore((s) => s.clearCells);
+  const resetRow = useLibraryStore((s) => s.resetRow);
+  const addToSetlist = useLibraryStore((s) => s.addToSetlist);
+
+  const [menu, setMenu] = useState<ContextMenu | null>(null);
 
   const analysis = useMemo(() => analyze(rows), [rows]);
   const visible = useMemo(
@@ -195,6 +214,9 @@ export function TrackGrid() {
                 {col.label}
               </th>
             ))}
+            <th className="border border-border px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground">
+              Tempo
+            </th>
             <th className="border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground">
               Arquivo
             </th>
@@ -209,7 +231,14 @@ export function TrackGrid() {
                 ? `Inconsistências: ${issues.join(", ")}`
                 : (row.error ?? "Clique para selecionar a linha inteira");
             return (
-            <tr key={row.id} className="hover:bg-muted/30">
+            <tr
+              key={row.id}
+              className="hover:bg-muted/30"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, row });
+              }}
+            >
               <td
                 onClick={() => selectRow(row)}
                 className="sticky left-0 z-10 cursor-pointer select-none border border-border bg-muted px-1 py-1 text-center text-xs text-muted-foreground"
@@ -228,10 +257,17 @@ export function TrackGrid() {
                 const dirty = row.edited[col.key] !== row.original[col.key];
                 const pending = row.suggested?.[col.key] !== undefined;
                 const isEditing = editing?.rowId === row.id && editing.colKey === col.key;
+                const value = row.edited[col.key];
+                const keyColor =
+                  col.key === "key" && typeof value === "string" ? camelotColor(value) : null;
+                const cellStyle: CSSProperties = { width: col.width, minWidth: col.width };
+                if (keyColor && !selected && !isEditing) {
+                  cellStyle.backgroundColor = keyColor;
+                }
                 return (
                   <td
                     key={col.key}
-                    style={{ width: col.width, minWidth: col.width }}
+                    style={cellStyle}
                     onMouseDown={(e) => onCellMouseDown(e, row.id, col.key)}
                     onDoubleClick={() => beginEdit(row, col.key)}
                     className={cn(
@@ -239,7 +275,7 @@ export function TrackGrid() {
                       col.type === "number" ? "text-right tabular-nums" : "text-left",
                       selected && "bg-primary/25 ring-1 ring-inset ring-primary",
                       pending && !selected && "bg-suggested/15 ring-1 ring-inset ring-suggested",
-                      dirty && !selected && !pending && "bg-dirty/10",
+                      dirty && !selected && !pending && !keyColor && "bg-dirty/10",
                     )}
                     title={pending ? `IA sugere: ${displayValue(row.suggested?.[col.key] ?? null)}` : undefined}
                   >
@@ -253,14 +289,24 @@ export function TrackGrid() {
                         onMouseDown={(e) => e.stopPropagation()}
                         className="w-full bg-transparent text-foreground outline-none"
                       />
+                    ) : col.key === "energy" ? (
+                      <span
+                        className={cn("block tracking-tight", dirty && "text-dirty")}
+                        title={value !== null ? `Energia ${value}/5` : ""}
+                      >
+                        {energyDots(typeof value === "number" ? value : null)}
+                      </span>
                     ) : (
                       <span className={cn("block truncate", dirty && "text-dirty")}>
-                        {displayValue(row.edited[col.key])}
+                        {displayValue(value)}
                       </span>
                     )}
                   </td>
                 );
               })}
+              <td className="border border-border px-2 py-1 text-right tabular-nums text-muted-foreground">
+                {formatDuration(row.durationSecs)}
+              </td>
               <td
                 className="border border-border px-2 py-1 text-left text-muted-foreground"
                 title={row.filePath}
@@ -272,6 +318,45 @@ export function TrackGrid() {
           })}
         </tbody>
       </table>
+
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onMouseDown={() => setMenu(null)} />
+          <div
+            className="fixed z-50 w-52 overflow-hidden rounded-md border border-border bg-background py-1 text-sm shadow-xl"
+            style={{ left: menu.x, top: menu.y }}
+          >
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent"
+              onClick={() => {
+                addToSetlist([menu.row.id]);
+                setMenu(null);
+              }}
+            >
+              Adicionar à setlist
+            </button>
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent"
+              onClick={() => {
+                void revealInFiles(menu.row.filePath);
+                setMenu(null);
+              }}
+            >
+              Revelar no Finder/Explorer
+            </button>
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+              disabled={menu.row.status !== "ready_to_write" && menu.row.suggested === null}
+              onClick={() => {
+                resetRow(menu.row.id);
+                setMenu(null);
+              }}
+            >
+              Reverter edições da linha
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ pub fn run() {
             commands::write_tags,
             commands::undo_write,
             commands::write_text_file,
+            commands::reveal_in_files,
             commands::import_rekordbox_xml,
             commands::import_m3u,
             config::get_config,

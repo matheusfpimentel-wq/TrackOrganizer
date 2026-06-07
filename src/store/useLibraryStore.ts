@@ -53,6 +53,7 @@ interface LibraryState {
   writing: boolean;
   writeResult: WriteSummary | null;
   lastWrite: LastWrite | null;
+  writeConfirmOpen: boolean;
 
   /** Ordered setlist (row id + transition note to the next track). */
   setlist: { rowId: string; note: string }[];
@@ -84,6 +85,7 @@ interface LibraryState {
   writeApproved: () => Promise<void>;
   undoLastWrite: () => Promise<void>;
   clearWriteResult: () => void;
+  setWriteConfirmOpen: (open: boolean) => void;
 
   setSetlistOpen: (open: boolean) => void;
   addToSetlist: (rowIds: string[]) => void;
@@ -122,6 +124,7 @@ function rowFromScan(t: ScannedTrack): TrackRow {
     fileName: t.fileName,
     format: t.format,
     hasArtwork: t.hasArtwork,
+    durationSecs: t.durationSecs,
     original: tags,
     edited: { ...tags },
     suggested: null,
@@ -241,6 +244,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   writing: false,
   writeResult: null,
   lastWrite: null,
+  writeConfirmOpen: false,
 
   setlist: [],
   setlistOpen: false,
@@ -540,6 +544,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   clearWriteResult: () => set({ writeResult: null }),
+  setWriteConfirmOpen: (open) => set({ writeConfirmOpen: open }),
 
   setSetlistOpen: (open) => set({ setlistOpen: open }),
 

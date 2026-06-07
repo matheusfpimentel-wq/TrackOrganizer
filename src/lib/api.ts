@@ -63,6 +63,14 @@ export async function readTags(path: string): Promise<TrackTags> {
   return invoke<TrackTags>("read_tags", { path });
 }
 
+/** Reveal a file in the OS file manager (Finder / Explorer). */
+export async function revealInFiles(path: string): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+  await invoke("reveal_in_files", { path });
+}
+
 export interface WriteRequest {
   filePath: string;
   tags: TrackTags;
