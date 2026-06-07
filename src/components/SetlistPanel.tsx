@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { exportSeratoCrate, saveTextFile } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   toM3u8,
   toRekordboxXml,
@@ -26,6 +27,8 @@ export function SetlistPanel() {
   const clearSetlist = useLibraryStore((s) => s.clearSetlist);
 
   const cuesByRow = useLibraryStore((s) => s.cuesByRow);
+  const reorderSetlist = useLibraryStore((s) => s.reorderSetlist);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const entries = useMemo<SetlistEntry[]>(
     () =>
@@ -134,9 +137,27 @@ export function SetlistPanel() {
                   .filter(Boolean)
                   .join(" · ");
                 return (
-                  <li key={row.id} className="rounded-md border border-border bg-muted/30 p-2">
+                  <li
+                    key={row.id}
+                    draggable
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragIndex !== null) {
+                        reorderSetlist(dragIndex, i);
+                      }
+                      setDragIndex(null);
+                    }}
+                    className={cn(
+                      "rounded-md border border-border bg-muted/30 p-2",
+                      dragIndex === i && "opacity-50",
+                    )}
+                  >
                     <div className="flex items-start gap-2">
-                      <span className="mt-0.5 w-5 shrink-0 text-right text-xs text-muted-foreground">
+                      <span
+                        className="mt-0.5 w-5 shrink-0 cursor-grab text-right text-xs text-muted-foreground"
+                        title="Arraste para reordenar"
+                      >
                         {i + 1}
                       </span>
                       <div className="min-w-0 flex-1">

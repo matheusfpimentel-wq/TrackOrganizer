@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -7,6 +8,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+import { windowRange } from "@/lib/virtual";
 import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
 import { camelotColor, displayValue, energyDots, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
@@ -48,6 +50,8 @@ export function TrackGrid() {
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
   const detectCues = useLibraryStore((s) => s.detectCues);
   const writeSeratoCues = useLibraryStore((s) => s.writeSeratoCues);
+  const undoEdit = useLibraryStore((s) => s.undoEdit);
+  const redoEdit = useLibraryStore((s) => s.redoEdit);
   const genres = useLibraryStore((s) => s.config.genres);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
@@ -86,6 +90,30 @@ export function TrackGrid() {
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Row virtualization (only kicks in for large libraries).
+  const VIRT_THRESHOLD = 150;
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(600);
+  const [rowH, setRowH] = useState(33);
+  useEffect(() => {
+    if (containerRef.current) {
+      setViewportH(containerRef.current.clientHeight);
+    }
+  }, [rows.length]);
+  const virtualize = visible.length > VIRT_THRESHOLD;
+  const win = virtualize
+    ? windowRange(scrollTop, viewportH, rowH, visible.length)
+    : { start: 0, end: visible.length, topPad: 0, bottomPad: 0 };
+  const colCount = COLUMNS.length + 3;
+  const measureRow = (el: HTMLTableRowElement | null) => {
+    if (el) {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0 && Math.abs(h - rowH) > 0.5) {
+        setRowH(h);
+      }
+    }
+  };
 
   const rowIndexById = useMemo(() => {
     const m = new Map<string, number>();
@@ -239,6 +267,19 @@ export function TrackGrid() {
   const onGridKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (editing) return;
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undoEdit();
+          return;
+        }
+        if (k === "y" || (k === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redoEdit();
+          return;
+        }
+      }
       switch (e.key) {
         case "Delete":
         case "Backspace":
@@ -285,7 +326,7 @@ export function TrackGrid() {
           }
       }
     },
-    [anchor, beginEdit, clearCells, editing, moveActive, rowIndexById, selection, visible],
+    [anchor, beginEdit, clearCells, editing, moveActive, redoEdit, rowIndexById, selection, undoEdit, visible],
   );
 
   if (rows.length === 0) {
@@ -301,6 +342,10 @@ export function TrackGrid() {
       ref={containerRef}
       tabIndex={0}
       onKeyDown={onGridKeyDown}
+      onScroll={(e) => {
+        setScrollTop(e.currentTarget.scrollTop);
+        setViewportH(e.currentTarget.clientHeight);
+      }}
       className="h-full overflow-auto outline-none"
     >
       <table className="w-max border-collapse text-sm">
@@ -340,7 +385,13 @@ export function TrackGrid() {
           </tr>
         </thead>
         <tbody>
-          {visible.map((row, rowIdx) => {
+          {win.topPad > 0 && (
+            <tr aria-hidden>
+              <td colSpan={colCount} style={{ height: win.topPad, padding: 0, border: 0 }} />
+            </tr>
+          )}
+          {visible.slice(win.start, win.end).map((row, localIdx) => {
+            const rowIdx = win.start + localIdx;
             const isDup = analysis.duplicates.has(row.id);
             const issues = analysis.issues.get(row.id);
             const rowTitle =
@@ -350,6 +401,7 @@ export function TrackGrid() {
             return (
             <tr
               key={row.id}
+              ref={localIdx === 0 ? measureRow : undefined}
               className="hover:bg-muted/30"
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -434,6 +486,11 @@ export function TrackGrid() {
             </tr>
             );
           })}
+          {win.bottomPad > 0 && (
+            <tr aria-hidden>
+              <td colSpan={colCount} style={{ height: win.bottomPad, padding: 0, border: 0 }} />
+            </tr>
+          )}
         </tbody>
       </table>
 
