@@ -46,6 +46,20 @@ export function StatusBar() {
       {chip("issues", "inconsistências", analysis.issues.size, "")}
       {errors > 0 && <span className="text-danger">{errors} com erro</span>}
 
+      <span
+        className="cursor-help rounded border border-border px-1.5 py-0.5"
+        title={
+          "Legenda dos status (ponto na linha):\n" +
+          "• cinza = sem alteração\n" +
+          "• laranja = editada (a gravar)\n" +
+          "• azul = sugestão da IA pendente\n" +
+          "• vermelho = erro de leitura\n" +
+          "Marcadores: D = possível duplicata · ! = inconsistência"
+        }
+      >
+        legenda
+      </span>
+
       <span className="ml-auto max-w-[40%] truncate" title={folder ?? ""}>
         {globalError ? <span className="text-danger">{globalError}</span> : folder}
       </span>

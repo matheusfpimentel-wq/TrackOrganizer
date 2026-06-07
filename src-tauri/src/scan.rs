@@ -49,6 +49,7 @@ pub fn scanned_track(path: &Path) -> ScannedTrack {
         file_name,
         format,
         has_artwork: error.is_none() && tags::has_artwork(&file_path),
+        duration_secs: if error.is_none() { tags::read_duration(&file_path) } else { None },
         tags,
         error,
     }

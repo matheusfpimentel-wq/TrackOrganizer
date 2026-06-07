@@ -26,6 +26,8 @@ pub struct ScannedTrack {
     pub file_name: String,
     pub format: String,
     pub has_artwork: bool,
+    /// Track length in seconds (read-only, from audio properties).
+    pub duration_secs: Option<u32>,
     pub tags: TrackTags,
     /// Set when the file could not be parsed.
     pub error: Option<String>,

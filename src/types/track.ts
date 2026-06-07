@@ -38,6 +38,8 @@ export interface TrackRow {
   /** Container format: mp3, m4a, flac, wav, aiff, ... */
   format: string;
   hasArtwork: boolean;
+  /** Track length in seconds (read-only). */
+  durationSecs: number | null;
   /** Snapshot from disk; used for diffing, undo and backup. */
   original: TrackTags;
   /** Working copy: manual edits land here. Starts equal to `original`. */
@@ -56,6 +58,7 @@ export interface ScannedTrack {
   fileName: string;
   format: string;
   hasArtwork: boolean;
+  durationSecs: number | null;
   tags: TrackTags;
   /** Set when the file could not be parsed (corrupt / unsupported). */
   error: string | null;

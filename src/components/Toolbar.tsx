@@ -24,13 +24,14 @@ export function Toolbar({ onOpenSettings }: Props) {
   const aiError = useLibraryStore((s) => s.aiError);
   const setAiError = useLibraryStore((s) => s.setAiError);
   const setReviewOpen = useLibraryStore((s) => s.setReviewOpen);
-  const writeApproved = useLibraryStore((s) => s.writeApproved);
   const writing = useLibraryStore((s) => s.writing);
   const lens = useLibraryStore((s) => s.lens);
   const lastWrite = useLibraryStore((s) => s.lastWrite);
   const undoLastWrite = useLibraryStore((s) => s.undoLastWrite);
   const setSetlistOpen = useLibraryStore((s) => s.setSetlistOpen);
   const setlistCount = useLibraryStore((s) => s.setlist.length);
+  const setWriteConfirmOpen = useLibraryStore((s) => s.setWriteConfirmOpen);
+  const provider = useLibraryStore((s) => s.config.provider);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -44,19 +45,6 @@ export function Toolbar({ onOpenSettings }: Props) {
     void saveTextFile("rekordbox.xml", toRekordboxXml(entries, "Tracklistr Collection"), [
       { name: "Rekordbox XML", extensions: ["xml"] },
     ]);
-  };
-
-  const onWrite = async () => {
-    if (dirtyCount === 0) {
-      return;
-    }
-    const ok = window.confirm(
-      `Gravar ${dirtyCount} faixa(s) editada(s) nos arquivos?\n` +
-        "Um backup das tags atuais é criado automaticamente antes.",
-    );
-    if (ok) {
-      await writeApproved();
-    }
   };
 
   return (
@@ -115,6 +103,12 @@ export function Toolbar({ onOpenSettings }: Props) {
 
           <div className="mx-1 h-6 w-px bg-border" />
 
+          <span
+            className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+            title="Provedor de IA ativo (altere na engrenagem)"
+          >
+            {provider === "ollama" ? "Ollama" : "Claude"}
+          </span>
           <Button
             variant="default"
             size="sm"
@@ -137,7 +131,7 @@ export function Toolbar({ onOpenSettings }: Props) {
             size="sm"
             className="bg-dirty text-black"
             disabled={dirtyCount === 0 || writing}
-            onClick={() => void onWrite()}
+            onClick={() => setWriteConfirmOpen(true)}
           >
             {writing ? "Gravando…" : `Gravar (${dirtyCount})`}
           </Button>

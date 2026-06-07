@@ -58,6 +58,40 @@ export function applyCharLimit(value: string, limit: number): string {
   return (lastSpace > limit * 0.6 ? slice.slice(0, lastSpace) : slice).trim();
 }
 
+/** Format seconds as m:ss (e.g. 214 -> "3:34"). */
+export function formatDuration(secs: number | null): string {
+  if (secs === null || secs <= 0) {
+    return "";
+  }
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Energy 1..5 as filled/empty dots (e.g. 3 -> "●●●○○"). */
+export function energyDots(energy: number | null): string {
+  if (energy === null || energy < 1) {
+    return "";
+  }
+  const n = Math.min(5, Math.max(1, energy));
+  return "●".repeat(n) + "○".repeat(5 - n);
+}
+
+const CAMELOT_RE = /^(1[0-2]|[1-9])([AB])$/i;
+
+/** Background color (hsl) for a Camelot key code, or null if not Camelot. */
+export function camelotColor(key: string): string | null {
+  const m = key.trim().match(CAMELOT_RE);
+  if (!m) {
+    return null;
+  }
+  const num = Number.parseInt(m[1] as string, 10);
+  // 12 hues around the wheel; A slightly darker than B.
+  const hue = ((num - 1) / 12) * 360;
+  const light = (m[2] as string).toUpperCase() === "A" ? 30 : 38;
+  return `hsl(${hue} 55% ${light}%)`;
+}
+
 /** Format a single tag value for display in the grid / exports. */
 export function displayValue(value: TrackTags[keyof TrackTags]): string {
   if (value === null || value === undefined) {

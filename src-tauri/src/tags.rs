@@ -91,6 +91,17 @@ pub fn has_artwork(path: &str) -> bool {
     }
 }
 
+/// Track length in seconds from the audio properties (None if unreadable).
+pub fn read_duration(path: &str) -> Option<u32> {
+    let tagged = Probe::open(path).ok()?.read().ok()?;
+    let secs = tagged.properties().duration().as_secs();
+    if secs == 0 {
+        None
+    } else {
+        Some(secs as u32)
+    }
+}
+
 fn set_or_remove(tag: &mut Tag, key: ItemKey, value: &str) {
     if value.trim().is_empty() {
         tag.remove_key(&key);

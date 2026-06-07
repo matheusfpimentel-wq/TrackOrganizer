@@ -13,6 +13,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "safaera.mp3",
     format: "mp3",
     hasArtwork: true,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Safaera [Free Download]",
@@ -32,6 +33,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "titi-me-pregunto.flac",
     format: "flac",
     hasArtwork: true,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Tití Me Preguntó",
@@ -51,6 +53,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "get-lucky-disclosure.mp3",
     format: "mp3",
     hasArtwork: false,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Get Lucky (Disclosure Remix)",
@@ -70,6 +73,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "automotivo-bibi.wav",
     format: "wav",
     hasArtwork: false,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Automotivo Bibi Fogosa",
@@ -89,6 +93,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "la-fiesta.m4a",
     format: "m4a",
     hasArtwork: true,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "La Fiesta (Aleteo Edit)",
@@ -108,6 +113,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "bonbon.mp3",
     format: "mp3",
     hasArtwork: true,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Bonbon",
@@ -127,6 +133,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "insomnia-bootleg.mp3",
     format: "mp3",
     hasArtwork: false,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Insomnia (Tech House Bootleg) www.djblog.com",
@@ -147,6 +154,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "bonbon-2.mp3",
     format: "mp3",
     hasArtwork: false,
+    durationSecs: 200,
     error: null,
     tags: {
       title: "Bonbon",
@@ -166,6 +174,7 @@ export const SAMPLE_TRACKS: ScannedTrack[] = [
     fileName: "broken-file.mp3",
     format: "mp3",
     hasArtwork: false,
+    durationSecs: 200,
     error: "read: invalid frame header",
     tags: {
       title: "",

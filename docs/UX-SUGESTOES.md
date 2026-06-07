@@ -3,6 +3,18 @@
 Revisão do estado atual (core + IA + análise + setlist/import-export) com sugestões
 priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · 🔴 grande.
 
+## ✅ Implementado (leva UX quick-wins)
+- Duração da faixa + **tempo total do set** (item 3)
+- **Camelot/key colorido** na coluna Tom (item 2 — parte visual; ordenação ainda pendente)
+- **Confirmação de gravação estilizada** com preview (item 5)
+- **Energia em ●●●○○** (item 19)
+- **Menu de contexto** (clique direito): Adicionar à setlist, Revelar no Finder/Explorer,
+  Reverter edições da linha (item 7)
+- **Indicador do provedor de IA** (Claude/Ollama) na toolbar (item 9)
+- **Legenda dos status** na barra inferior (item 12)
+
+Pendentes abaixo (mantidos para próximas levas).
+
 ## Prioridade alta (maior impacto no uso real de DJ)
 
 1. **Navegação por teclado estilo Excel** 🟡 — hoje só `Delete` e duplo-clique editam.

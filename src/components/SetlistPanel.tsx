@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { saveTextFile } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 import { toM3u8, toRekordboxXml, toRoteiroTxt, type SetlistEntry } from "@/lib/setlistExport";
 
 const PLAYLIST_NAME = "Tracklistr Setlist";
@@ -28,6 +29,11 @@ export function SetlistPanel() {
         })
         .filter((e): e is SetlistEntry => e !== null),
     [setlist, byId],
+  );
+
+  const totalSecs = useMemo(
+    () => entries.reduce((sum, e) => sum + (e.row.durationSecs ?? 0), 0),
+    [entries],
   );
 
   const addSelected = () => {
@@ -73,7 +79,10 @@ export function SetlistPanel() {
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">Setlist</h2>
-            <p className="text-xs text-muted-foreground">{entries.length} faixa(s) na ordem do show</p>
+            <p className="text-xs text-muted-foreground">
+              {entries.length} faixa(s)
+              {totalSecs > 0 ? ` · ${formatDuration(totalSecs)} de set` : ""}
+            </p>
           </div>
           <button className="text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
             ✕
