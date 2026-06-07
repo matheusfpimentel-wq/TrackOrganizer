@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { AiSuggestion, DeepScanResult, DupGroup, ScannedTrack, TrackTags } from "@/types/track";
+import type {
+  AiSuggestion,
+  DeepScanResult,
+  DupGroup,
+  ScannedTrack,
+  StructureResult,
+  TrackTags,
+} from "@/types/track";
 import { mockAiSuggestions, SAMPLE_TRACKS } from "@/lib/sampleData";
 import { downloadText } from "@/lib/export";
 
@@ -100,6 +107,38 @@ export async function findAudioDuplicates(paths: string[]): Promise<DupGroup[]> 
     return bonbons.length > 1 ? [{ files: bonbons, similarity: 0.97 }] : [];
   }
   return invoke<DupGroup[]>("find_audio_duplicates", { paths });
+}
+
+/** Detect structural cue points (intro / drops / breaks / outro) for a track. */
+export async function detectCues(path: string): Promise<StructureResult> {
+  if (!isTauri()) {
+    // Dev stub: a build-up → drop → break → outro shape.
+    const durationSecs = 212;
+    const envelope = Array.from({ length: 240 }, (_, i) => {
+      const t = i / 240;
+      if (t < 0.06) return 0.15 + t;
+      if (t < 0.28) return 0.35 + (t - 0.06) * 0.6;
+      if (t < 0.55) return 0.9 + 0.1 * Math.sin(i);
+      if (t < 0.62) return 0.25;
+      if (t < 0.9) return 0.85 + 0.1 * Math.sin(i);
+      return Math.max(0, 0.8 - (t - 0.9) * 6);
+    });
+    return {
+      filePath: path,
+      durationSecs,
+      bpm: 124,
+      envelope,
+      cues: [
+        { positionSecs: 6, label: "Início", kind: "intro" },
+        { positionSecs: 18, label: "Build", kind: "build" },
+        { positionSecs: 60, label: "Drop", kind: "drop" },
+        { positionSecs: 118, label: "Quebra/Break", kind: "break" },
+        { positionSecs: 132, label: "Drop", kind: "drop" },
+        { positionSecs: 190, label: "Outro", kind: "outro" },
+      ],
+    };
+  }
+  return invoke<StructureResult>("detect_cues", { path });
 }
 
 export interface WriteRequest {

@@ -263,8 +263,14 @@ agrupa faixas com o **mesmo áudio**, **ignorando nome/tags** (pega cópias reno
 re-encodes). Compara por *bit error rate* com busca de alinhamento; agrupa acima de 80% de
 semelhança. Usa a seleção ou a biblioteca inteira.
 
-> **Fase seguinte:** detecção de cues/estrutura (drops/breaks) para gerar Memory Cues por
-> plataforma, fechando a Fase 2 de integração (Serato `.crate`/GEOB e Traktor `.nml`).
+**Cues / estrutura:** no menu de contexto (clique direito) → **Detectar cues / estrutura**.
+Analisa o **envelope de energia** da faixa inteira e detecta **Início, Build, Drop, Quebra/Break
+e Outro**, mostrando uma **mini-waveform** com os marcadores e a lista de cues (tempo + tipo).
+Heurística por energia — um ponto de partida pra ajustar.
+
+> **Fase 2 de integração (próxima):** gravar esses cues como **Memory/Hot Cues nativos** —
+> frames GEOB do Serato no arquivo, `POSITION_MARK` no rekordbox.xml e `CUE_V2` no `.nml` do
+> Traktor — além de `.crate` (Serato) e coleção `.nml` (Traktor) nativos.
 
 ## Validação feita
 

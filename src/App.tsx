@@ -8,6 +8,7 @@ import { SetlistPanel } from "@/components/SetlistPanel";
 import { WriteConfirm } from "@/components/WriteConfirm";
 import { DeepScanPanel } from "@/components/DeepScanPanel";
 import { AudioDupPanel } from "@/components/AudioDupPanel";
+import { CuePanel } from "@/components/CuePanel";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
       <WriteConfirm />
       <DeepScanPanel />
       <AudioDupPanel />
+      <CuePanel />
 
       {writeResult && (
         <div className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-background px-4 py-3 text-sm shadow-xl">

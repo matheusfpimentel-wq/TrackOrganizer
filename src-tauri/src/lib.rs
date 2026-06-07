@@ -23,6 +23,7 @@ pub fn run() {
             commands::import_m3u,
             commands::deep_scan,
             commands::find_audio_duplicates,
+            commands::detect_cues,
             config::get_config,
             config::update_config,
             config::clear_api_key,
