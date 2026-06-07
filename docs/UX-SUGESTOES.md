@@ -12,6 +12,10 @@ priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · �
   Reverter edições da linha (item 7)
 - **Indicador do provedor de IA** (Claude/Ollama) na toolbar (item 9)
 - **Legenda dos status** na barra inferior (item 12)
+- **Ordenar por coluna** + **navegação por teclado** + **autocomplete de gênero** (itens 1, 4, 11)
+- **Undo/redo de edições** (`Ctrl+Z`/`Ctrl+Y`) (item 15)
+- **Drag-and-drop na setlist** (item 16)
+- **Virtualização da tabela** para bibliotecas grandes (item 6)
 
 Pendentes abaixo (mantidos para próximas levas).
 

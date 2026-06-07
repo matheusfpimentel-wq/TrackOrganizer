@@ -37,6 +37,9 @@ interface LastWrite {
 interface LibraryState {
   folder: string | null;
   rows: TrackRow[];
+  /** Undo/redo stacks of previous `rows` snapshots (structural sharing). */
+  editPast: TrackRow[][];
+  editFuture: TrackRow[][];
   scanning: boolean;
   globalError: string | null;
   filter: string;
@@ -91,6 +94,8 @@ interface LibraryState {
   setCell: (rowId: string, key: TagKey, raw: string) => void;
   clearCells: (keys: Iterable<string>) => void;
   resetRow: (rowId: string) => void;
+  undoEdit: () => void;
+  redoEdit: () => void;
   setSelection: (keys: Set<string>) => void;
   setAnchor: (anchor: { rowId: string; colKey: TagKey } | null) => void;
   clearSelection: () => void;
@@ -116,6 +121,7 @@ interface LibraryState {
   addToSetlist: (rowIds: string[]) => void;
   removeFromSetlist: (index: number) => void;
   moveSetlistItem: (index: number, dir: -1 | 1) => void;
+  reorderSetlist: (from: number, to: number) => void;
   setTransitionNote: (index: number, note: string) => void;
   clearSetlist: () => void;
 
@@ -177,6 +183,19 @@ function coerce(key: TagKey, raw: string): TrackTags[TagKey] {
     return Number.isNaN(n) ? null : n;
   }
   return raw;
+}
+
+const HISTORY_LIMIT = 80;
+
+/** Patch that snapshots the current rows onto the undo stack and clears redo. */
+function historyPatch(state: { editPast: TrackRow[][]; rows: TrackRow[] }): {
+  editPast: TrackRow[][];
+  editFuture: TrackRow[][];
+} {
+  return {
+    editPast: [...state.editPast, state.rows].slice(-HISTORY_LIMIT),
+    editFuture: [],
+  };
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -252,6 +271,8 @@ function buildSuggestedPartial(
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   folder: null,
   rows: [],
+  editPast: [],
+  editFuture: [],
   scanning: false,
   globalError: null,
   filter: "",
@@ -309,7 +330,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ scanning: true, folder, selection: new Set<string>(), anchor: null });
     try {
       const scanned = await api.scanFolder(folder);
-      set({ rows: scanned.map(rowFromScan), scanning: false });
+      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [] });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
     }
@@ -329,7 +350,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const scanned = lower.endsWith(".xml")
         ? await api.importRekordboxXml(path)
         : await api.importM3u(path);
-      set({ rows: scanned.map(rowFromScan), scanning: false });
+      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [] });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
     }
@@ -340,6 +361,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setCell: (rowId, key, raw) => {
     set((state) => ({
+      ...historyPatch(state),
       rows: state.rows.map((row) => {
         if (row.id !== rowId) {
           return row;
@@ -348,6 +370,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         return { ...row, edited, status: statusFor({ ...row, edited }) };
       }),
     }));
+  },
+
+  undoEdit: () => {
+    set((state) => {
+      const prev = state.editPast[state.editPast.length - 1];
+      if (!prev) {
+        return {};
+      }
+      return {
+        rows: prev,
+        editPast: state.editPast.slice(0, -1),
+        editFuture: [state.rows, ...state.editFuture].slice(0, HISTORY_LIMIT),
+      };
+    });
+  },
+
+  redoEdit: () => {
+    set((state) => {
+      const next = state.editFuture[0];
+      if (!next) {
+        return {};
+      }
+      return {
+        rows: next,
+        editPast: [...state.editPast, state.rows].slice(-HISTORY_LIMIT),
+        editFuture: state.editFuture.slice(1),
+      };
+    });
   },
 
   clearCells: (keys) => {
@@ -364,6 +414,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       targets.set(rowId, existing);
     }
     set((state) => ({
+      ...historyPatch(state),
       rows: state.rows.map((row) => {
         const cols = targets.get(row.id);
         if (!cols) {
@@ -380,6 +431,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   resetRow: (rowId) => {
     set((state) => ({
+      ...historyPatch(state),
       rows: state.rows.map((row) =>
         row.id === rowId
           ? { ...row, edited: { ...row.original }, suggested: null, status: row.error ? "error" : "pristine" }
@@ -469,6 +521,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   applySuggestion: (rowId, field) => {
     set((state) => ({
+      ...historyPatch(state),
       rows: state.rows.map((row) => {
         if (row.id !== rowId || !row.suggested) {
           return row;
@@ -493,6 +546,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   rejectSuggestion: (rowId, field) => {
     set((state) => ({
+      ...historyPatch(state),
       rows: state.rows.map((row) => {
         if (row.id !== rowId || !row.suggested) {
           return row;
@@ -507,6 +561,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   applyAllSuggestions: () => {
     set((state) => ({
+      ...historyPatch(state),
       reviewOpen: false,
       rows: state.rows.map((row) => {
         if (!row.suggested) {
@@ -526,6 +581,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   rejectAllSuggestions: () => {
     set((state) => ({
+      ...historyPatch(state),
       reviewOpen: false,
       rows: state.rows.map((row) =>
         row.suggested ? { ...row, suggested: null, status: statusFor(row) } : row,
@@ -627,6 +683,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       }
       next[index] = b;
       next[target] = a;
+      return { setlist: next };
+    });
+  },
+
+  reorderSetlist: (from, to) => {
+    set((state) => {
+      if (from === to || from < 0 || to < 0) {
+        return {};
+      }
+      const next = [...state.setlist];
+      const moved = next[from];
+      if (!moved || to >= next.length) {
+        return {};
+      }
+      next.splice(from, 1);
+      next.splice(to, 0, moved);
       return { setlist: next };
     });
   },
