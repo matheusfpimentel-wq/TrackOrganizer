@@ -173,19 +173,78 @@ core em Rust compilam, mas o link final do app desktop não.
 
 ## Setlist e integração (import/export)
 
-**Importar** (botão *Importar*): coleção **Rekordbox `.xml`** (lê os arquivos referenciados
-do disco) ou playlist **`.m3u`/`.m3u8`**. As faixas entram na tabela como num scan.
+Resumo da abordagem: import/export pelos **formatos de intercâmbio** (seguro), **sem**
+escrita direta no banco do Rekordbox. **Fase 2:** `.crate` nativo do Serato e `.nml` do
+Traktor, e os cues/beatgrid (do Deep Scan) embutidos por plataforma.
 
-**Exportar:**
-- **Coleção** (botão *RB XML*): a tabela visível como `rekordbox.xml`.
-- **Setlist** (painel *Setlist*): monte a ordem do show a partir da seleção, com
-  reordenação e **notas de transição** por faixa; exporte como **`.m3u8`** (importa em
-  Rekordbox/Serato/Traktor), **Rekordbox XML** (playlist nativa) ou **Roteiro `.txt`**.
+Tutoriais detalhados abaixo. 👇
 
-> Abordagem: import/export pelos **formatos de intercâmbio** (seguro), não escrita direta
-> no banco do Rekordbox. **Fase 2:** `.crate` nativo do Serato e `.nml` do Traktor, e os
-> cues/beatgrid (do Deep Scan) embutidos por plataforma. Valide o primeiro import no seu
-> app — detalhes de path/atributos podem precisar de ajuste fino por versão.
+---
+
+## 📥 Tutorial — Importar para o Tracklistr
+
+Use o botão **Importar** na barra de ferramentas. Formatos aceitos:
+
+### A) Coleção do Rekordbox (`.xml`)
+1. No **Rekordbox**: `Arquivo → Exibir/Mostrar → Preferências → Avançado → Banco de dados`
+   e ative **"rekordbox xml"** (ou `Arquivo → Biblioteca → Backup/Exportar coleção em XML`,
+   dependendo da versão). Anote o caminho do `rekordbox.xml`.
+2. No **Tracklistr**: clique **Importar** → selecione esse `rekordbox.xml`.
+3. O app lê cada faixa referenciada **direto do arquivo no disco** (tags atuais, BPM, key)
+   e popula a tabela. Faixas cujo arquivo não existe mais aparecem com erro na linha.
+
+### B) Playlist `.m3u` / `.m3u8`
+1. Clique **Importar** → selecione o `.m3u8`.
+2. Cada linha de caminho vira uma faixa (caminhos relativos são resolvidos pela pasta do
+   playlist). Útil pra trazer um set específico em vez da coleção inteira.
+
+> Dica: também dá pra usar **Abrir pasta** pra escanear uma pasta recursivamente — o
+> Importar é pra quando você já tem uma coleção/playlist montada em outro app.
+
+---
+
+## 📤 Tutorial — Exportar do Tracklistr e levar pro seu app
+
+Primeiro, o **fluxo recomendado** dentro do Tracklistr:
+1. **Abrir pasta** (ou Importar) → 2. selecionar células → **Taggear com IA** → 3. revisar
+o **diff** e aprovar → 4. **Gravar** (grava as tags nos arquivos, com backup) → 5. exportar.
+
+> ⚠️ Importante: **Gravar primeiro.** O write-back das tags é o que faz Rekordbox/Serato/
+> Traktor enxergarem título/artista/gênero/BPM/comentário corrigidos. Os exports de playlist
+> só carregam a **ordem e as referências** das faixas, não reescrevem as tags.
+
+### Rekordbox
+**Opção 1 — Playlist nativa (recomendada):**
+1. No Tracklistr, monte a **Setlist** (ou use *RB XML* pra exportar a coleção visível) e
+   exporte um **`rekordbox.xml`**.
+2. No Rekordbox: `Preferências → Avançado → Banco de dados → rekordbox xml` e aponte o
+   arquivo exportado em **"Arquivo de biblioteca importada"**.
+3. Na árvore lateral do Rekordbox vai aparecer **rekordbox xml** → abra a playlist
+   *Tracklistr Setlist* e **arraste** as faixas pra sua coleção/playlists.
+
+**Opção 2 — `.m3u8`:** `Arquivo → Importar → Importar playlist` e selecione o `.m3u8`.
+
+**Atualizar tags já na coleção:** selecione as faixas → clique direito → **"Recarregar TAG"**
+(*Reload Tag*) pra puxar o que o Tracklistr gravou nos arquivos.
+
+### Serato DJ
+1. Exporte a **Setlist** como **`.m3u8`**.
+2. No Serato, painel **Files**, navegue até o `.m3u8` e arraste pra área de crates — ele
+   cria um crate com as faixas. (Serato lê `.m3u`/`.m3u8`.)
+3. Pra atualizar metadados: como o Serato lê tags do arquivo, as tags gravadas pelo
+   Tracklistr aparecem ao re-adicionar/reanalisar. *(Cues/beatgrid nativos do Serato = Fase 2.)*
+
+### Traktor
+1. Exporte a **Setlist** como **`.m3u8`**.
+2. No Traktor: clique direito em **Playlists → Importar Playlist** e selecione o `.m3u8`.
+3. Traktor também lê tags do arquivo; use **Consistency Check / re-import** pra atualizar.
+   *(Coleção `.nml` nativa com cues = Fase 2.)*
+
+### Roteiro do show (`.txt`)
+No painel **Setlist**, **Roteiro .txt** gera uma lista numerada com BPM·Tom e as **notas de
+transição** que você escreveu entre as faixas — pra imprimir ou abrir no celular na cabine.
+
+---
 
 ## Validação feita
 
@@ -203,6 +262,9 @@ do disco) ou playlist **`.m3u`/`.m3u8`**. As faixas entram na tabela como num sc
 - [x] **Diff visual** original vs. sugerido, aprovação por célula / lote
 - [x] **Padronização de título** `Título - Artista (Versão)` com limite de chars
 - [x] **Backup automático** antes do write-back
+- [x] **Setlist + import/export** (Rekordbox XML, M3U) — Fase 1
+- [ ] Integração Fase 2 (Serato `.crate`, Traktor `.nml`) e ideias de **UI/UX**:
+  ver [`docs/UX-SUGESTOES.md`](docs/UX-SUGESTOES.md)
 - [ ] **Undo** da última gravação (a partir do backup JSON já gerado)
 - [ ] **Módulos avançados:** Deep Scan (fingerprint p/ duplicatas, detecção de
   "fake 320", estrutura musical p/ cues) e **Setlist** (timeline + transições +
