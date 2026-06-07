@@ -24,6 +24,8 @@ interface ContextMenu {
   row: TrackRow;
 }
 
+type SortKey = TagKey | "duration" | "fileName";
+
 const STATUS_COLOR: Record<TrackRow["status"], string> = {
   pristine: "bg-transparent",
   pending_approval: "bg-suggested",
@@ -44,14 +46,40 @@ export function TrackGrid() {
   const clearCells = useLibraryStore((s) => s.clearCells);
   const resetRow = useLibraryStore((s) => s.resetRow);
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
+  const genres = useLibraryStore((s) => s.config.genres);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
+  const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
 
   const analysis = useMemo(() => analyze(rows), [rows]);
-  const visible = useMemo(
-    () => selectVisible(rows, filter, lens, analysis),
-    [rows, filter, lens, analysis],
-  );
+  const visible = useMemo(() => {
+    const base = selectVisible(rows, filter, lens, analysis);
+    if (!sort) {
+      return base;
+    }
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const valueOf = (row: TrackRow): string | number | null => {
+      if (sort.col === "duration") return row.durationSecs;
+      if (sort.col === "fileName") return row.fileName;
+      return row.edited[sort.col];
+    };
+    return [...base].sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      if (va === null || va === "") return 1; // empties last
+      if (vb === null || vb === "") return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), "pt-BR") * dir;
+    });
+  }, [rows, filter, lens, analysis, sort]);
+
+  const toggleSort = useCallback((col: SortKey) => {
+    setSort((cur) => {
+      if (!cur || cur.col !== col) return { col, dir: "asc" };
+      if (cur.dir === "asc") return { col, dir: "desc" };
+      return null;
+    });
+  }, []);
 
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
@@ -91,6 +119,7 @@ export function TrackGrid() {
   const onCellMouseDown = useCallback(
     (e: MouseEvent, rowId: string, colKey: TagKey) => {
       if (editing) return;
+      containerRef.current?.focus();
       const rowIndex = rowIndexById.get(rowId);
       const colIndex = colIndexByKey.get(colKey);
       if (rowIndex === undefined || colIndex === undefined) return;
@@ -163,23 +192,98 @@ export function TrackGrid() {
       if (e.key === "Enter") {
         e.preventDefault();
         commitEdit();
+        // Move down to the same column after committing.
+        if (editing) {
+          const r = rowIndexById.get(editing.rowId);
+          const next = r === undefined ? undefined : visible[r + 1];
+          if (next) {
+            setSelection(new Set([cellKey(next.id, editing.colKey)]));
+            setAnchor({ rowId: next.id, colKey: editing.colKey });
+          }
+        }
       } else if (e.key === "Escape") {
         e.preventDefault();
         setEditing(null);
       }
     },
-    [commitEdit],
+    [commitEdit, editing, rowIndexById, setAnchor, setSelection, visible],
+  );
+
+  const moveActive = useCallback(
+    (dr: number, dc: number) => {
+      if (!anchor) {
+        const first = visible[0];
+        const firstCol = COLUMNS[0];
+        if (first && firstCol) {
+          setSelection(new Set([cellKey(first.id, firstCol.key)]));
+          setAnchor({ rowId: first.id, colKey: firstCol.key });
+        }
+        return;
+      }
+      const r = rowIndexById.get(anchor.rowId);
+      const c = colIndexByKey.get(anchor.colKey);
+      if (r === undefined || c === undefined) return;
+      const nr = Math.max(0, Math.min(visible.length - 1, r + dr));
+      const nc = Math.max(0, Math.min(COLUMNS.length - 1, c + dc));
+      const row = visible[nr];
+      const col = COLUMNS[nc];
+      if (!row || !col) return;
+      setSelection(new Set([cellKey(row.id, col.key)]));
+      setAnchor({ rowId: row.id, colKey: col.key });
+    },
+    [anchor, colIndexByKey, rowIndexById, setAnchor, setSelection, visible],
   );
 
   const onGridKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (editing) return;
-      if ((e.key === "Delete" || e.key === "Backspace") && selection.size > 0) {
-        e.preventDefault();
-        clearCells(selection);
+      switch (e.key) {
+        case "Delete":
+        case "Backspace":
+          if (selection.size > 0) {
+            e.preventDefault();
+            clearCells(selection);
+          }
+          return;
+        case "ArrowUp":
+          e.preventDefault();
+          moveActive(e.shiftKey ? -1 : -1, 0);
+          return;
+        case "ArrowDown":
+          e.preventDefault();
+          moveActive(1, 0);
+          return;
+        case "ArrowLeft":
+          e.preventDefault();
+          moveActive(0, -1);
+          return;
+        case "ArrowRight":
+        case "Tab":
+          e.preventDefault();
+          moveActive(0, e.key === "Tab" && e.shiftKey ? -1 : 1);
+          return;
+        case "Enter":
+          if (anchor) {
+            const row = visible[rowIndexById.get(anchor.rowId) ?? -1];
+            if (row) {
+              e.preventDefault();
+              beginEdit(row, anchor.colKey);
+            }
+          }
+          return;
+        default:
+          // Type a printable character to start editing that cell.
+          if (anchor && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const row = visible[rowIndexById.get(anchor.rowId) ?? -1];
+            if (row) {
+              setEditing({ rowId: row.id, colKey: anchor.colKey });
+              setDraft(e.key);
+              e.preventDefault();
+            }
+          }
       }
     },
-    [clearCells, editing, selection],
+    [anchor, beginEdit, clearCells, editing, moveActive, rowIndexById, selection, visible],
   );
 
   if (rows.length === 0) {
@@ -207,18 +311,29 @@ export function TrackGrid() {
               <th
                 key={col.key}
                 style={{ width: col.width, minWidth: col.width }}
-                onClick={() => selectColumn(col)}
+                onClick={(e) => (e.altKey ? selectColumn(col) : toggleSort(col.key))}
                 className="cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
-                title="Clique para selecionar a coluna inteira"
+                title="Clique para ordenar · Alt+clique para selecionar a coluna"
               >
                 {col.label}
+                {sort?.col === col.key && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
               </th>
             ))}
-            <th className="border border-border px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground">
+            <th
+              onClick={() => toggleSort("duration")}
+              className="cursor-pointer select-none border border-border px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground hover:text-foreground"
+              title="Clique para ordenar por duração"
+            >
               Tempo
+              {sort?.col === "duration" && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
             </th>
-            <th className="border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground">
+            <th
+              onClick={() => toggleSort("fileName")}
+              className="cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
+              title="Clique para ordenar por arquivo"
+            >
               Arquivo
+              {sort?.col === "fileName" && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
             </th>
           </tr>
         </thead>
@@ -283,6 +398,7 @@ export function TrackGrid() {
                       <input
                         autoFocus
                         value={draft}
+                        list={col.key === "genre" ? "genre-bank" : undefined}
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={commitEdit}
                         onKeyDown={onInputKeyDown}
@@ -318,6 +434,14 @@ export function TrackGrid() {
           })}
         </tbody>
       </table>
+
+      {genres.length > 0 && (
+        <datalist id="genre-bank">
+          {genres.map((g) => (
+            <option key={g} value={g} />
+          ))}
+        </datalist>
+      )}
 
       {menu && (
         <>
