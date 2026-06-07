@@ -126,6 +126,7 @@ interface LibraryState {
   detectCues: (rowId: string) => Promise<void>;
   detectCuesForSelection: () => Promise<void>;
   setCueOpen: (open: boolean) => void;
+  writeSeratoCues: (rowId: string) => Promise<void>;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -743,6 +744,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setCueOpen: (open) => set({ cueOpen: open }),
+
+  writeSeratoCues: async (rowId) => {
+    const { rows, cuesByRow } = get();
+    const row = rows.find((r) => r.id === rowId);
+    if (!row) {
+      return;
+    }
+    set({ writing: true, globalError: null, writeResult: null });
+    try {
+      let cues = cuesByRow[rowId];
+      if (!cues) {
+        const structure = await api.detectCues(row.filePath);
+        cues = structure.cues;
+        set((state) => ({ cuesByRow: { ...state.cuesByRow, [rowId]: structure.cues } }));
+      }
+      const backupPath = await api.writeSeratoCues(row.filePath, cues);
+      set({ writing: false, writeResult: { ok: 1, failed: 0, backupPath } });
+    } catch (err) {
+      set({ writing: false, globalError: String(err) });
+    }
+  },
 }));
 
 /**

@@ -120,7 +120,7 @@ pub struct DeepScanResult {
 }
 
 /// A detected structural cue point.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cue {
     pub position_secs: f32,

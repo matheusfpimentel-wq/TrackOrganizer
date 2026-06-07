@@ -47,6 +47,7 @@ export function TrackGrid() {
   const resetRow = useLibraryStore((s) => s.resetRow);
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
   const detectCues = useLibraryStore((s) => s.detectCues);
+  const writeSeratoCues = useLibraryStore((s) => s.writeSeratoCues);
   const genres = useLibraryStore((s) => s.config.genres);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
@@ -468,6 +469,22 @@ export function TrackGrid() {
               }}
             >
               Detectar cues / estrutura
+            </button>
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+              disabled={!menu.row.fileName.toLowerCase().endsWith(".mp3")}
+              onClick={() => {
+                const ok = window.confirm(
+                  `Gravar cues no Serato (Markers2) em ${menu.row.fileName}?\n` +
+                    "O arquivo original é copiado para backup antes.",
+                );
+                if (ok) {
+                  void writeSeratoCues(menu.row.id);
+                }
+                setMenu(null);
+              }}
+            >
+              Gravar cues no Serato (MP3)
             </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent"

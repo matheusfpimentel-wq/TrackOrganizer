@@ -5,6 +5,7 @@ mod deepscan;
 mod import;
 mod model;
 mod scan;
+mod serato;
 mod tags;
 
 /// Tauri application entry point (shared by desktop & mobile bins).
@@ -24,6 +25,8 @@ pub fn run() {
             commands::deep_scan,
             commands::find_audio_duplicates,
             commands::detect_cues,
+            commands::write_serato_cues,
+            commands::export_serato_crate,
             config::get_config,
             config::update_config,
             config::clear_api_key,

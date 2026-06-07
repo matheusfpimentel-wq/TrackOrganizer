@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AiSuggestion,
+  Cue,
   DeepScanResult,
   DupGroup,
   ScannedTrack,
@@ -139,6 +140,30 @@ export async function detectCues(path: string): Promise<StructureResult> {
     };
   }
   return invoke<StructureResult>("detect_cues", { path });
+}
+
+/** Write cues into an MP3 as Serato Markers2 (returns the backup path). */
+export async function writeSeratoCues(path: string, cues: Cue[]): Promise<string> {
+  if (!isTauri()) {
+    return "(dev) sem gravação no navegador";
+  }
+  return invoke<string>("write_serato_cues", { path, cues });
+}
+
+/** Export a Serato `.crate` playlist (native save dialog). Returns dest or null. */
+export async function exportSeratoCrate(paths: string[]): Promise<string | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  const dest = await save({
+    defaultPath: "Tracklistr.crate",
+    filters: [{ name: "Serato Crate", extensions: ["crate"] }],
+  });
+  if (!dest) {
+    return null;
+  }
+  await invoke("export_serato_crate", { dest, paths });
+  return dest;
 }
 
 export interface WriteRequest {

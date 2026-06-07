@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useLibraryStore } from "@/store/useLibraryStore";
-import { saveTextFile } from "@/lib/api";
+import { exportSeratoCrate, saveTextFile } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { toM3u8, toRekordboxXml, toRoteiroTxt, type SetlistEntry } from "@/lib/setlistExport";
 
@@ -68,6 +68,12 @@ export function SetlistPanel() {
       await saveTextFile("setlist-roteiro.txt", toRoteiroTxt(entries), [
         { name: "Texto", extensions: ["txt"] },
       ]);
+    }
+  };
+
+  const exportCrate = () => {
+    if (entries.length > 0) {
+      void exportSeratoCrate(entries.map((e) => e.row.filePath));
     }
   };
 
@@ -171,12 +177,15 @@ export function SetlistPanel() {
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 border-t border-border px-4 py-3">
+        <div className="grid grid-cols-2 gap-2 border-t border-border px-4 py-3">
           <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={() => void exportAs("m3u8")}>
             .m3u8
           </Button>
           <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={() => void exportAs("rekordbox")}>
             Rekordbox XML
+          </Button>
+          <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={exportCrate}>
+            Serato .crate
           </Button>
           <Button size="sm" variant="outline" disabled={entries.length === 0} onClick={() => void exportAs("roteiro")}>
             Roteiro .txt
