@@ -1,5 +1,5 @@
 use crate::model::{ScannedTrack, TrackTags, WriteOutcome, WriteRequest, WriteResult};
-use crate::{scan, tags};
+use crate::{import, scan, tags};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -69,4 +69,22 @@ pub fn undo_write(backup_path: String) -> Result<WriteOutcome, String> {
         .collect();
 
     Ok(WriteOutcome { backup_path, results })
+}
+
+/// Write a UTF-8 text file to an absolute path (used for setlist/playlist export).
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content).map_err(|e| format!("escrever arquivo: {e}"))
+}
+
+/// Import a rekordbox collection XML into our track model.
+#[tauri::command]
+pub fn import_rekordbox_xml(path: String) -> Result<Vec<ScannedTrack>, String> {
+    import::import_rekordbox_xml(&path)
+}
+
+/// Import an M3U/M3U8 playlist into our track model.
+#[tauri::command]
+pub fn import_m3u(path: String) -> Result<Vec<ScannedTrack>, String> {
+    import::import_m3u(&path)
 }

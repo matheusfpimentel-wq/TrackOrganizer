@@ -1,6 +1,7 @@
 mod ai;
 mod commands;
 mod config;
+mod import;
 mod model;
 mod scan;
 mod tags;
@@ -15,6 +16,9 @@ pub fn run() {
             commands::read_tags,
             commands::write_tags,
             commands::undo_write,
+            commands::write_text_file,
+            commands::import_rekordbox_xml,
+            commands::import_m3u,
             config::get_config,
             config::update_config,
             config::clear_api_key,

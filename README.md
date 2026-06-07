@@ -171,6 +171,22 @@ runners nativos `macos-latest` (Intel + Apple Silicon) e `windows-latest`:
 **Linux (apenas dev neste repositório):** sem as libs GTK/webkit acima, o frontend e o
 core em Rust compilam, mas o link final do app desktop não.
 
+## Setlist e integração (import/export)
+
+**Importar** (botão *Importar*): coleção **Rekordbox `.xml`** (lê os arquivos referenciados
+do disco) ou playlist **`.m3u`/`.m3u8`**. As faixas entram na tabela como num scan.
+
+**Exportar:**
+- **Coleção** (botão *RB XML*): a tabela visível como `rekordbox.xml`.
+- **Setlist** (painel *Setlist*): monte a ordem do show a partir da seleção, com
+  reordenação e **notas de transição** por faixa; exporte como **`.m3u8`** (importa em
+  Rekordbox/Serato/Traktor), **Rekordbox XML** (playlist nativa) ou **Roteiro `.txt`**.
+
+> Abordagem: import/export pelos **formatos de intercâmbio** (seguro), não escrita direta
+> no banco do Rekordbox. **Fase 2:** `.crate` nativo do Serato e `.nml` do Traktor, e os
+> cues/beatgrid (do Deep Scan) embutidos por plataforma. Valide o primeiro import no seu
+> app — detalhes de path/atributos podem precisar de ajuste fino por versão.
+
 ## Validação feita
 
 - `npm run build` (tsc strict + vite) — **OK**

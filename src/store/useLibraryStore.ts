@@ -54,7 +54,12 @@ interface LibraryState {
   writeResult: WriteSummary | null;
   lastWrite: LastWrite | null;
 
+  /** Ordered setlist (row id + transition note to the next track). */
+  setlist: { rowId: string; note: string }[];
+  setlistOpen: boolean;
+
   scan: () => Promise<void>;
+  importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
   setLens: (lens: Lens) => void;
   setCell: (rowId: string, key: TagKey, raw: string) => void;
@@ -79,6 +84,13 @@ interface LibraryState {
   writeApproved: () => Promise<void>;
   undoLastWrite: () => Promise<void>;
   clearWriteResult: () => void;
+
+  setSetlistOpen: (open: boolean) => void;
+  addToSetlist: (rowIds: string[]) => void;
+  removeFromSetlist: (index: number) => void;
+  moveSetlistItem: (index: number, dir: -1 | 1) => void;
+  setTransitionNote: (index: number, note: string) => void;
+  clearSetlist: () => void;
 }
 
 function tagsEqual(a: TrackTags, b: TrackTags): boolean {
@@ -230,6 +242,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   writeResult: null,
   lastWrite: null,
 
+  setlist: [],
+  setlistOpen: false,
+
   scan: async () => {
     set({ globalError: null });
     const folder = await api.pickFolder();
@@ -239,6 +254,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ scanning: true, folder, selection: new Set<string>(), anchor: null });
     try {
       const scanned = await api.scanFolder(folder);
+      set({ rows: scanned.map(rowFromScan), scanning: false });
+    } catch (err) {
+      set({ scanning: false, globalError: String(err) });
+    }
+  },
+
+  importLibrary: async () => {
+    set({ globalError: null });
+    const path = await api.pickFile([
+      { name: "Coleção / Playlist", extensions: ["xml", "m3u8", "m3u"] },
+    ]);
+    if (!path) {
+      return;
+    }
+    set({ scanning: true, folder: path, selection: new Set<string>(), anchor: null });
+    try {
+      const lower = path.toLowerCase();
+      const scanned = lower.endsWith(".xml")
+        ? await api.importRekordboxXml(path)
+        : await api.importM3u(path);
       set({ rows: scanned.map(rowFromScan), scanning: false });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
@@ -505,6 +540,48 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   clearWriteResult: () => set({ writeResult: null }),
+
+  setSetlistOpen: (open) => set({ setlistOpen: open }),
+
+  addToSetlist: (rowIds) => {
+    set((state) => {
+      const present = new Set(state.setlist.map((s) => s.rowId));
+      const additions = rowIds
+        .filter((id) => !present.has(id))
+        .map((rowId) => ({ rowId, note: "" }));
+      return { setlist: [...state.setlist, ...additions], setlistOpen: true };
+    });
+  },
+
+  removeFromSetlist: (index) => {
+    set((state) => ({ setlist: state.setlist.filter((_, i) => i !== index) }));
+  },
+
+  moveSetlistItem: (index, dir) => {
+    set((state) => {
+      const next = [...state.setlist];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) {
+        return {};
+      }
+      const a = next[index];
+      const b = next[target];
+      if (!a || !b) {
+        return {};
+      }
+      next[index] = b;
+      next[target] = a;
+      return { setlist: next };
+    });
+  },
+
+  setTransitionNote: (index, note) => {
+    set((state) => ({
+      setlist: state.setlist.map((item, i) => (i === index ? { ...item, note } : item)),
+    }));
+  },
+
+  clearSetlist: () => set({ setlist: [] }),
 }));
 
 /**
