@@ -1,6 +1,35 @@
+import type { Lens } from "@/lib/analysis";
+
 /** Persist small UI preferences in localStorage (best-effort). */
 
 const COL_WIDTHS_KEY = "tracklistr.colWidths";
+const VIEW_KEY = "tracklistr.view";
+
+export interface ViewPrefs {
+  filter: string;
+  lens: Lens;
+}
+
+export function loadView(): ViewPrefs {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (raw) {
+      const v = JSON.parse(raw) as Partial<ViewPrefs>;
+      return { filter: v.filter ?? "", lens: v.lens ?? "all" };
+    }
+  } catch {
+    // ignore
+  }
+  return { filter: "", lens: "all" };
+}
+
+export function saveView(view: ViewPrefs): void {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+  } catch {
+    // ignore
+  }
+}
 
 export function loadColWidths(defaults: Record<string, number>): Record<string, number> {
   try {
