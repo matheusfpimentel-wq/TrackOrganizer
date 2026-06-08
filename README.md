@@ -164,11 +164,12 @@ runners nativos `macos-latest` (Intel + Apple Silicon) e `windows-latest`:
 - **Push de tag** `vX.Y.Z`: cria um **draft Release** com os instaladores anexados.
 
 > Para distribuir sem avisos de segurança: **assinar/notarizar** no macOS
-> (Apple Developer ID) e **assinar** no Windows (code-signing cert). O workflow já passa
-> os secrets de assinatura macOS para o `tauri-action` (`APPLE_CERTIFICATE`,
+> (Apple Developer ID) e **assinar** no Windows (code-signing cert). No `build.yml` há um
+> bloco `env` de assinatura macOS **comentado** — ao cadastrar os secrets (`APPLE_CERTIFICATE`,
 > `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`,
-> `APPLE_TEAM_ID`) — sem eles o build sai sem assinatura (comportamento atual); ao
-> adicioná-los nas *Settings → Secrets* do repo, o build passa a sair assinado/notarizado.
+> `APPLE_TEAM_ID`) e **descomentá-lo**, o build sai assinado/notarizado. _Deixar as variáveis
+> presentes porém vazias faz o `tauri-action` falhar ao importar o certificado, por isso ficam
+> comentadas por padrão (build sai sem assinatura)._
 
 **Linux (apenas dev neste repositório):** sem as libs GTK/webkit acima, o frontend e o
 core em Rust compilam, mas o link final do app desktop não.
