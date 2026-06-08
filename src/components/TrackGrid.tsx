@@ -57,6 +57,8 @@ export function TrackGrid() {
   const writeSeratoCues = useLibraryStore((s) => s.writeSeratoCues);
   const undoEdit = useLibraryStore((s) => s.undoEdit);
   const redoEdit = useLibraryStore((s) => s.redoEdit);
+  const artwork = useLibraryStore((s) => s.artwork);
+  const loadArtwork = useLibraryStore((s) => s.loadArtwork);
   const genres = useLibraryStore((s) => s.config.genres);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
@@ -135,7 +137,7 @@ export function TrackGrid() {
   const win = virtualize
     ? windowRange(scrollTop, viewportH, rowH, visible.length)
     : { start: 0, end: visible.length, topPad: 0, bottomPad: 0 };
-  const colCount = COLUMNS.length + 3;
+  const colCount = COLUMNS.length + 4;
   const measureRow = (el: HTMLTableRowElement | null) => {
     if (el) {
       const h = el.getBoundingClientRect().height;
@@ -144,6 +146,15 @@ export function TrackGrid() {
       }
     }
   };
+
+  // Lazily load cover art for the rows currently in view.
+  useEffect(() => {
+    for (const row of visible.slice(win.start, win.end)) {
+      if (row.hasArtwork && !(row.id in artwork)) {
+        void loadArtwork(row.id);
+      }
+    }
+  }, [visible, win.start, win.end, artwork, loadArtwork]);
 
   const rowIndexById = useMemo(() => {
     const m = new Map<string, number>();
@@ -384,6 +395,7 @@ export function TrackGrid() {
             <th className="sticky left-0 z-20 w-12 border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
               #
             </th>
+            <th className="w-9 border border-border bg-muted px-1 py-1.5 text-xs text-muted-foreground" aria-label="Capa" />
             {COLUMNS.map((col) => {
               const w = widths[col.key] ?? col.width;
               return (
@@ -458,6 +470,17 @@ export function TrackGrid() {
                   {isDup && <span className="font-bold text-suggested" title="Possível duplicata">D</span>}
                   {issues && issues.length > 0 && <span className="font-bold text-dirty">!</span>}
                 </div>
+              </td>
+              <td className="border border-border p-0.5 text-center align-middle">
+                {artwork[row.id] ? (
+                  <img
+                    src={artwork[row.id] as string}
+                    alt=""
+                    className="mx-auto h-7 w-7 rounded object-cover"
+                  />
+                ) : (
+                  <span className="text-muted-foreground/40">{row.hasArtwork ? "…" : "♪"}</span>
+                )}
               </td>
               {COLUMNS.map((col) => {
                 const key = cellKey(row.id, col.key);

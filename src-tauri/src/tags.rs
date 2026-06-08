@@ -1,4 +1,5 @@
 use crate::model::TrackTags;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use lofty::config::WriteOptions;
 use lofty::prelude::*;
 use lofty::probe::Probe;
@@ -100,6 +101,15 @@ pub fn read_duration(path: &str) -> Option<u32> {
     } else {
         Some(secs as u32)
     }
+}
+
+/// First embedded picture as a `data:` URL (None if no artwork / unreadable).
+pub fn read_artwork(path: &str) -> Option<String> {
+    let tagged = Probe::open(path).ok()?.read().ok()?;
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
+    let pic = tag.pictures().first()?;
+    let mime = pic.mime_type().map(|m| m.as_str()).unwrap_or("image/jpeg");
+    Some(format!("data:{};base64,{}", mime, STANDARD.encode(pic.data())))
 }
 
 fn set_or_remove(tag: &mut Tag, key: ItemKey, value: &str) {

@@ -87,6 +87,10 @@ interface LibraryState {
   cueBatchRunning: boolean;
   cueBatchProgress: { done: number; total: number } | null;
 
+  /** Cover-art data URLs by row id (lazy; null = none). */
+  artwork: Record<string, string | null>;
+  loadArtwork: (rowId: string) => Promise<void>;
+
   scan: () => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -320,6 +324,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   cuesByRow: {},
   cueBatchRunning: false,
   cueBatchProgress: null,
+  artwork: {},
 
   scan: async () => {
     set({ globalError: null });
@@ -330,7 +335,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ scanning: true, folder, selection: new Set<string>(), anchor: null });
     try {
       const scanned = await api.scanFolder(folder);
-      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [] });
+      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [], artwork: {} });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
     }
@@ -350,7 +355,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const scanned = lower.endsWith(".xml")
         ? await api.importRekordboxXml(path)
         : await api.importM3u(path);
-      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [] });
+      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [], artwork: {} });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
     }
@@ -816,6 +821,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   setCueOpen: (open) => set({ cueOpen: open }),
+
+  loadArtwork: async (rowId) => {
+    const row = get().rows.find((r) => r.id === rowId);
+    if (!row || row.id in get().artwork) {
+      return;
+    }
+    // Mark as in-flight (null) so it isn't requested twice.
+    set((state) => ({ artwork: { ...state.artwork, [rowId]: null } }));
+    try {
+      const url = await api.getArtwork(row.filePath);
+      set((state) => ({ artwork: { ...state.artwork, [rowId]: url } }));
+    } catch {
+      // keep null
+    }
+  },
 
   writeSeratoCues: async (rowId) => {
     const { rows, cuesByRow } = get();
