@@ -16,6 +16,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scan_folder,
             commands::read_tags,
+            commands::get_artwork,
             commands::write_tags,
             commands::undo_write,
             commands::write_text_file,

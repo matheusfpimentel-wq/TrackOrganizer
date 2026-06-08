@@ -19,6 +19,12 @@ pub fn read_tags(path: String) -> Result<TrackTags, String> {
     tags::read_tags(&path)
 }
 
+/// First embedded artwork as a `data:` URL (for thumbnails), if any.
+#[tauri::command]
+pub fn get_artwork(path: String) -> Option<String> {
+    tags::read_artwork(&path)
+}
+
 fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }

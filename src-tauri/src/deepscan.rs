@@ -453,5 +453,17 @@ pub fn detect_cues(path: &str) -> Result<StructureResult, String> {
 
     let bpm = crate::tags::read_tags(path).ok().and_then(|t| t.bpm);
 
+    // Snap cues to the BPM beat grid (phase anchored on the first cue).
+    if let Some(bpm) = bpm {
+        if bpm > 0 {
+            let beat = 60.0 / bpm as f32;
+            let anchor = deduped.first().map(|c| c.position_secs).unwrap_or(0.0);
+            for c in deduped.iter_mut() {
+                let n = ((c.position_secs - anchor) / beat).round();
+                c.position_secs = (anchor + n * beat).max(0.0);
+            }
+        }
+    }
+
     Ok(StructureResult { file_path: path.to_string(), duration_secs, bpm, envelope, cues: deduped })
 }

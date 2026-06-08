@@ -71,6 +71,17 @@ export async function readTags(path: string): Promise<TrackTags> {
   return invoke<TrackTags>("read_tags", { path });
 }
 
+/** First embedded artwork as a data URL (for thumbnails), or null. */
+export async function getArtwork(path: string): Promise<string | null> {
+  if (!isTauri()) {
+    // Dev stub: a small colored tile so thumbnails are visible in the browser.
+    const hue = Math.abs([...path].reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><rect width='32' height='32' fill='hsl(${hue} 60% 45%)'/></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+  return invoke<string | null>("get_artwork", { path });
+}
+
 /** Reveal a file in the OS file manager (Finder / Explorer). */
 export async function revealInFiles(path: string): Promise<void> {
   if (!isTauri()) {
