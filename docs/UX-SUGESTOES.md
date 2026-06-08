@@ -20,8 +20,11 @@ priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · �
 - **Energia clicável** (clique no ●○ para setar 1–5) (item 19)
 - **Acessibilidade**: aria-labels nos botões de ícone (item 18)
 
-Pendentes (próximas levas): thumbnails de capa, persistir filtros/lente, i18n,
-e produto: assinatura/notarização, beat-grid/snap dos cues, cues Serato em FLAC/M4A.
+- **Miniaturas de capa** (lazy) · **snap dos cues por BPM** · **persistir filtro/lente**
+
+Pendentes (próximas levas): **i18n** (refactor grande, baixo ROI enquanto PT-BR único),
+cues Serato em **M4A**, **code-signing Windows** (precisa de certificado), assinatura/
+notarização macOS (secrets já passados no CI).
 
 ## Prioridade alta (maior impacto no uso real de DJ)
 

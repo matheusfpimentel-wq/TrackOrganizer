@@ -606,7 +606,7 @@ export function TrackGrid() {
             </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
-              disabled={!menu.row.fileName.toLowerCase().endsWith(".mp3")}
+              disabled={!/\.(mp3|flac)$/i.test(menu.row.fileName)}
               onClick={() => {
                 const ok = window.confirm(
                   `Gravar cues no Serato (Markers2) em ${menu.row.fileName}?\n` +
@@ -618,7 +618,7 @@ export function TrackGrid() {
                 setMenu(null);
               }}
             >
-              Gravar cues no Serato (MP3)
+              Gravar cues no Serato (MP3/FLAC)
             </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent"

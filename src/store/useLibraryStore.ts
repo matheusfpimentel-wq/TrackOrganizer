@@ -16,6 +16,9 @@ import {
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
+import { loadView, saveView } from "@/lib/prefs";
+
+const INITIAL_VIEW = loadView();
 
 const NUMERIC_KEYS: ReadonlySet<TagKey> = new Set<TagKey>(["bpm", "year", "energy"]);
 const AI_FIELD_SET: ReadonlySet<string> = new Set<string>(AI_FIELDS);
@@ -279,8 +282,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   editFuture: [],
   scanning: false,
   globalError: null,
-  filter: "",
-  lens: "all",
+  filter: INITIAL_VIEW.filter,
+  lens: INITIAL_VIEW.lens,
   selection: new Set<string>(),
   anchor: null,
 
@@ -361,8 +364,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  setFilter: (value) => set({ filter: value }),
-  setLens: (lens) => set((state) => ({ lens: state.lens === lens ? "all" : lens })),
+  setFilter: (value) => {
+    set({ filter: value });
+    saveView({ filter: value, lens: get().lens });
+  },
+  setLens: (lens) => {
+    set((state) => ({ lens: state.lens === lens ? "all" : lens }));
+    saveView({ filter: get().filter, lens: get().lens });
+  },
 
   setCell: (rowId, key, raw) => {
     set((state) => ({

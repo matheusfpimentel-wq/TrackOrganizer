@@ -277,9 +277,9 @@ cada `<TRACK>` no `rekordbox.xml` exportado (coleção *RB XML* ou playlist da S
 o XML no Rekordbox e os cues aparecem nas faixas.
 
 **Serato (Fase 2):**
-- **Cues** → menu de contexto **Gravar cues no Serato (MP3)**: escreve um frame GEOB
-  `Serato Markers2` (hot cues) **dentro do arquivo**, preservando outros GEOB do Serato
-  (BeatGrid/Overview) e fazendo **cópia de backup** do arquivo antes. _(MP3 por enquanto.)_
+- **Cues** → menu de contexto **Gravar cues no Serato (MP3/FLAC)**: escreve `Serato Markers2`
+  **dentro do arquivo** — GEOB no MP3 (preservando outros GEOB do Serato) e Vorbis comment
+  `SERATO_MARKERS_V2` no FLAC — com **cópia de backup** do arquivo antes. _(M4A: futuro.)_
 - **Playlists** → painel Setlist → **Serato .crate** (formato nativo de crate).
 
 > O encoder do Markers2 tem **teste de round-trip** (encode→decode), mas a compatibilidade
@@ -293,7 +293,7 @@ Windows (letra do drive); no macOS fica em branco e o Traktor pode pedir um *rel
 | Plataforma | Playlists | Cues |
 |-----------|-----------|------|
 | **Rekordbox** | `rekordbox.xml` (coleção/playlist) | `POSITION_MARK` (Memory) ✅ |
-| **Serato** | `.crate` | GEOB `Serato Markers2` no MP3 ✅ |
+| **Serato** | `.crate` | `Serato Markers2` no MP3 (GEOB) e FLAC (Vorbis) ✅ |
 | **Traktor** | `.nml` | `CUE_V2` no `.nml` ✅ |
 | Universal | `.m3u8` (todos) | — |
 
