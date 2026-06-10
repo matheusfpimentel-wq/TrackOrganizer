@@ -17,7 +17,8 @@ import { listen } from "@tauri-apps/api/event";
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
-import { loadView, saveView } from "@/lib/prefs";
+import { loadView, saveView, loadTitleFormat, saveTitleFormat } from "@/lib/prefs";
+import { applyTemplate, applyCharLimit } from "@/lib/format";
 
 const INITIAL_VIEW = loadView();
 
@@ -111,6 +112,11 @@ interface LibraryState {
   setCell: (rowId: string, key: TagKey, raw: string) => void;
   clearCells: (keys: Iterable<string>) => void;
   resetRow: (rowId: string) => void;
+  /** Configurable title naming template (e.g. "[titulo] - [artista] ([versao])"). */
+  titleFormat: string;
+  setTitleFormat: (fmt: string) => void;
+  applyTitlePattern: () => void;
+  findReplace: (col: TagKey, find: string, repl: string, selectionOnly: boolean, ci: boolean) => void;
   undoEdit: () => void;
   redoEdit: () => void;
   setSelection: (keys: Set<string>) => void;
@@ -295,6 +301,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   globalError: null,
   filter: INITIAL_VIEW.filter,
   lens: INITIAL_VIEW.lens,
+  titleFormat: loadTitleFormat(),
   selection: new Set<string>(),
   anchor: null,
 
@@ -511,6 +518,53 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           : row,
       ),
     }));
+  },
+
+  setTitleFormat: (fmt) => {
+    set({ titleFormat: fmt });
+    saveTitleFormat(fmt);
+  },
+
+  applyTitlePattern: () => {
+    set((state) => {
+      const ids = new Set<string>();
+      for (const key of state.selection) {
+        const sep = key.indexOf("::");
+        if (sep > 0) ids.add(key.slice(0, sep));
+      }
+      const inScope = (r: TrackRow) => (ids.size > 0 ? ids.has(r.id) : true);
+      const rows = state.rows.map((row) => {
+        if (!inScope(row) || row.error) return row;
+        const title = applyCharLimit(applyTemplate(state.titleFormat, row.edited, row.fileName), state.config.charLimit);
+        if (title === row.edited.title || title === "") return row;
+        const edited: TrackTags = { ...row.edited, title };
+        return { ...row, edited, status: statusFor({ ...row, edited }) };
+      });
+      return { ...historyPatch(state), rows };
+    });
+  },
+
+  findReplace: (col, find, repl, selectionOnly, ci) => {
+    if (find === "") return;
+    set((state) => {
+      const ids = new Set<string>();
+      for (const key of state.selection) {
+        const sep = key.indexOf("::");
+        if (sep > 0) ids.add(key.slice(0, sep));
+      }
+      const re = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), ci ? "gi" : "g");
+      const rows = state.rows.map((row) => {
+        if (selectionOnly && !ids.has(row.id)) return row;
+        if (row.error) return row;
+        const cur = row.edited[col];
+        if (typeof cur !== "string") return row;
+        const next = cur.replace(re, repl);
+        if (next === cur) return row;
+        const edited: TrackTags = { ...row.edited, [col]: next };
+        return { ...row, edited, status: statusFor({ ...row, edited }) };
+      });
+      return { ...historyPatch(state), rows };
+    });
   },
 
   setSelection: (keys) => set({ selection: keys }),

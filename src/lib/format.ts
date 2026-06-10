@@ -92,6 +92,43 @@ export function camelotColor(key: string): string | null {
   return `hsl(${hue} 55% ${light}%)`;
 }
 
+/** Detect a Remix/Edit/Bootleg/etc. qualifier from a title. */
+export function detectVersion(title: string): string {
+  const m = title.match(/[([]([^()[\]]*(remix|edit|bootleg|mashup|vip|version|club|dub|flip|rework)[^()[\]]*)[)\]]/i);
+  return m?.[1]?.trim() ?? "";
+}
+
+/**
+ * Apply a name template like "[titulo] - [artista] ([versao]) [tom]".
+ * Tokens (case-insensitive): titulo, artista, album, genero, tom, bpm, ano,
+ * versao, arquivo. Empty "(  )" / "[  ]" leftovers are cleaned up.
+ */
+export function applyTemplate(template: string, t: TrackTags, fileName: string): string {
+  const version = detectVersion(t.title);
+  const baseTitle = cleanText(t.title.replace(/[([][^()[\]]*(remix|edit|bootleg|mashup|vip|version|club|dub|flip|rework)[^()[\]]*[)\]]/i, ""));
+  const map: Record<string, string> = {
+    titulo: baseTitle || t.title,
+    artista: t.artist,
+    album: t.album,
+    genero: t.genre,
+    tom: t.key,
+    bpm: t.bpm != null ? String(t.bpm) : "",
+    ano: t.year != null ? String(t.year) : "",
+    versao: version,
+    arquivo: fileName,
+  };
+  let out = template.replace(/\[([a-zA-Z]+)\]/g, (_, tok: string) => map[tok.toLowerCase()] ?? "");
+  // Remove empty () [] left by missing tokens, then tidy.
+  out = out
+    .replace(/\(\s*\)/g, "")
+    .replace(/\[\s*\]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s*-\s*$/g, "")
+    .replace(/^\s*-\s*/g, "")
+    .trim();
+  return out;
+}
+
 /** Format a single tag value for display in the grid / exports. */
 export function displayValue(value: TrackTags[keyof TrackTags]): string {
   if (value === null || value === undefined) {

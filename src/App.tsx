@@ -10,10 +10,12 @@ import { DeepScanPanel } from "@/components/DeepScanPanel";
 import { AudioDupPanel } from "@/components/AudioDupPanel";
 import { CuePanel } from "@/components/CuePanel";
 import { PlayerBar } from "@/components/PlayerBar";
+import { FindReplace } from "@/components/FindReplace";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   const loadConfig = useLibraryStore((s) => s.loadConfig);
   const writeResult = useLibraryStore((s) => s.writeResult);
   const clearWriteResult = useLibraryStore((s) => s.clearWriteResult);
@@ -28,7 +30,7 @@ export default function App() {
         <span className="text-sm font-semibold tracking-tight">Tracklistr</span>
         <span className="text-xs text-muted-foreground">organização de biblioteca de DJ</span>
       </header>
-      <Toolbar onOpenSettings={() => setSettingsOpen(true)} />
+      <Toolbar onOpenSettings={() => setSettingsOpen(true)} onOpenFind={() => setFindOpen(true)} />
       <main className="min-h-0 flex-1">
         <TrackGrid />
       </main>
@@ -36,6 +38,7 @@ export default function App() {
       <StatusBar />
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <FindReplace open={findOpen} onClose={() => setFindOpen(false)} />
       <DiffReview />
       <SetlistPanel />
       <WriteConfirm />

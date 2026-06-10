@@ -8,9 +8,11 @@ import { toRekordboxXml } from "@/lib/setlistExport";
 
 interface Props {
   onOpenSettings: () => void;
+  onOpenFind: () => void;
 }
 
-export function Toolbar({ onOpenSettings }: Props) {
+export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
+  const applyTitlePattern = useLibraryStore((s) => s.applyTitlePattern);
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
   const scanning = useLibraryStore((s) => s.scanning);
@@ -93,8 +95,24 @@ export function Toolbar({ onOpenSettings }: Props) {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Buscar (título, artista, álbum, gênero, arquivo)…"
-          className="w-72"
+          className="w-60"
         />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenFind}
+          title="Localizar e substituir em massa numa coluna"
+        >
+          Loc/Subst
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => applyTitlePattern()}
+          title="Aplicar o padrão de nome (engrenagem) ao Título das faixas selecionadas (ou todas)"
+        >
+          Aplicar padrão
+        </Button>
 
         <div className="ml-auto flex items-center gap-2">
           <Button
