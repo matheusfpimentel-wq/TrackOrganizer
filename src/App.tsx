@@ -9,6 +9,7 @@ import { WriteConfirm } from "@/components/WriteConfirm";
 import { DeepScanPanel } from "@/components/DeepScanPanel";
 import { AudioDupPanel } from "@/components/AudioDupPanel";
 import { CuePanel } from "@/components/CuePanel";
+import { PlayerBar } from "@/components/PlayerBar";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
       <main className="min-h-0 flex-1">
         <TrackGrid />
       </main>
+      <PlayerBar />
       <StatusBar />
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />

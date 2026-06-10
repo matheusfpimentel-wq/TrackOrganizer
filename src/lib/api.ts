@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AiSuggestion,
@@ -15,6 +15,11 @@ import { downloadText } from "@/lib/export";
 /** True when running inside the Tauri webview (vs. a plain browser tab). */
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** A URL the `<audio>` element can play for a local file (Tauri asset protocol). */
+export function toPlayableSrc(path: string): string {
+  return isTauri() ? convertFileSrc(path) : "";
 }
 
 /** Native folder picker. Returns the absolute path or null if cancelled. */
