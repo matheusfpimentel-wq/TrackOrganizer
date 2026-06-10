@@ -13,7 +13,7 @@ fn default_char_limit() -> u32 {
 }
 
 fn default_provider() -> String {
-    "claude".to_string()
+    "ollama".to_string()
 }
 
 fn default_ollama_url() -> String {

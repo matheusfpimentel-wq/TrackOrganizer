@@ -57,13 +57,13 @@ export async function importM3u(path: string): Promise<ScannedTrack[]> {
   return invoke<ScannedTrack[]>("import_m3u", { path });
 }
 
-/** Recursively scan a folder for audio files and read their tags. */
-export async function scanFolder(path: string): Promise<ScannedTrack[]> {
+/** Scan a folder for audio files and read their tags (optionally recursive). */
+export async function scanFolder(path: string, recursive: boolean): Promise<ScannedTrack[]> {
   // Browser dev fallback: serve sample data so the UI works without Tauri.
   if (!isTauri()) {
     return SAMPLE_TRACKS;
   }
-  return invoke<ScannedTrack[]>("scan_folder", { path });
+  return invoke<ScannedTrack[]>("scan_folder", { path, recursive });
 }
 
 /** Re-read a single file's tags from disk. */
@@ -266,7 +266,7 @@ export interface ConfigPatch {
 }
 
 const DEV_CONFIG: PublicConfig = {
-  provider: "claude",
+  provider: "ollama",
   model: "claude-sonnet-4-6",
   charLimit: 50,
   hasApiKey: true,

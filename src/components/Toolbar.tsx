@@ -62,8 +62,16 @@ export function Toolbar({ onOpenSettings }: Props) {
   return (
     <div className="border-b border-border bg-muted/40">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Button onClick={() => void scan()} disabled={scanning}>
+        <Button onClick={() => void scan(false)} disabled={scanning} title="Escanear só esta pasta">
           {scanning ? "Escaneando…" : "Abrir pasta"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void scan(true)}
+          disabled={scanning}
+          title="Escanear esta pasta e todas as subpastas"
+        >
+          + Subpastas
         </Button>
         <Button
           variant="outline"
@@ -127,9 +135,7 @@ export function Toolbar({ onOpenSettings }: Props) {
             disabled={aiRunning || selection.size === 0}
             onClick={() => void runAi()}
           >
-            {aiRunning && aiProgress
-              ? `IA ${aiProgress.done}/${aiProgress.total}…`
-              : "Taggear com IA"}
+            {aiRunning && aiProgress ? `Autotag ${aiProgress.done}/${aiProgress.total}…` : "Autotag"}
           </Button>
 
           {pendingCount > 0 && (
@@ -196,7 +202,14 @@ export function Toolbar({ onOpenSettings }: Props) {
 
           <div className="mx-1 h-6 w-px bg-border" />
 
-          <Button variant="ghost" size="sm" onClick={onOpenSettings} title="Configurações" aria-label="Configurações">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={onOpenSettings}
+            title="Configurações"
+            aria-label="Configurações"
+            className="px-2.5 text-lg leading-none"
+          >
             ⚙
           </Button>
         </div>

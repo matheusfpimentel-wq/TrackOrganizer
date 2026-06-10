@@ -9,8 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Recursively scan a folder and read tags. Per-file errors are embedded in
 /// each `ScannedTrack`, so this command itself does not fail.
 #[tauri::command]
-pub fn scan_folder(path: String) -> Vec<ScannedTrack> {
-    scan::scan_folder(&path)
+pub fn scan_folder(path: String, recursive: bool) -> Vec<ScannedTrack> {
+    scan::scan_folder(&path, recursive)
 }
 
 /// Re-read a single file's tags from disk.

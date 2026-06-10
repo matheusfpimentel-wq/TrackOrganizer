@@ -42,32 +42,37 @@ fn merge_energy(comment: &str, energy: Option<u8>) -> String {
     }
 }
 
-/// Read the primary tag of a file into our `TrackTags` model.
-///
-/// Returns an `Err(String)` for unreadable/corrupt files so the frontend can
-/// surface the problem instead of the whole scan failing.
-pub fn read_tags(path: &str) -> Result<TrackTags, String> {
+/// Read tags + duration + artwork-presence in a single probe (big perf win for
+/// large libraries vs. opening the file three times).
+pub fn read_meta(path: &str) -> Result<(TrackTags, Option<u32>, bool), String> {
     let tagged = Probe::open(path)
         .map_err(|e| format!("open: {e}"))?
         .read()
         .map_err(|e| format!("read: {e}"))?;
 
-    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
-
-    let Some(tag) = tag else {
-        // No tags present is not an error — return an empty set.
-        return Ok(TrackTags::default());
+    let duration = {
+        let secs = tagged.properties().duration().as_secs();
+        if secs == 0 {
+            None
+        } else {
+            Some(secs as u32)
+        }
     };
 
+    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+    let Some(tag) = tag else {
+        return Ok((TrackTags::default(), duration, false));
+    };
+
+    let has_artwork = tag.picture_count() > 0;
     let bpm = tag
         .get_string(&ItemKey::Bpm)
         .and_then(|s| s.trim().parse::<f32>().ok())
         .map(|f| f.round() as u32);
-
     let raw_comment = tag.comment().map(|c| c.to_string()).unwrap_or_default();
     let (comment, energy) = split_energy(&raw_comment);
 
-    Ok(TrackTags {
+    let tags = TrackTags {
         title: tag.title().map(|c| c.to_string()).unwrap_or_default(),
         artist: tag.artist().map(|c| c.to_string()).unwrap_or_default(),
         album: tag.album().map(|c| c.to_string()).unwrap_or_default(),
@@ -77,30 +82,13 @@ pub fn read_tags(path: &str) -> Result<TrackTags, String> {
         year: tag.year().map(|y| y as i32),
         energy,
         comment,
-    })
+    };
+    Ok((tags, duration, has_artwork))
 }
 
-/// Whether the file carries at least one embedded picture (artwork).
-pub fn has_artwork(path: &str) -> bool {
-    match Probe::open(path).and_then(|p| p.read()) {
-        Ok(tagged) => tagged
-            .primary_tag()
-            .or_else(|| tagged.first_tag())
-            .map(|t| t.picture_count() > 0)
-            .unwrap_or(false),
-        Err(_) => false,
-    }
-}
-
-/// Track length in seconds from the audio properties (None if unreadable).
-pub fn read_duration(path: &str) -> Option<u32> {
-    let tagged = Probe::open(path).ok()?.read().ok()?;
-    let secs = tagged.properties().duration().as_secs();
-    if secs == 0 {
-        None
-    } else {
-        Some(secs as u32)
-    }
+/// Read the primary tag of a file into our `TrackTags` model.
+pub fn read_tags(path: &str) -> Result<TrackTags, String> {
+    read_meta(path).map(|(tags, _, _)| tags)
 }
 
 /// First embedded picture as a `data:` URL (None if no artwork / unreadable).
