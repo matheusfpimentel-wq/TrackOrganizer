@@ -15,6 +15,8 @@ export function SettingsDialog({ open, onClose }: Props) {
   const saveConfig = useLibraryStore((s) => s.saveConfig);
   const clearApiKey = useLibraryStore((s) => s.clearApiKey);
   const rows = useLibraryStore((s) => s.rows);
+  const titleFormat = useLibraryStore((s) => s.titleFormat);
+  const setTitleFormat = useLibraryStore((s) => s.setTitleFormat);
 
   const [provider, setProvider] = useState<AiProvider>(config.provider);
   const [apiKey, setApiKey] = useState("");
@@ -168,6 +170,17 @@ export function SettingsDialog({ open, onClose }: Props) {
           onChange={(e) => setCharLimit(e.target.value)}
           className="mb-4 w-32"
         />
+
+        <label className="mb-1 block text-xs text-muted-foreground">Padrão de nome (botão "Aplicar padrão")</label>
+        <Input
+          value={titleFormat}
+          onChange={(e) => setTitleFormat(e.target.value)}
+          placeholder="[titulo] - [artista] ([versao])"
+          className="mb-1 w-full font-mono text-xs"
+        />
+        <p className="mb-4 text-[11px] text-muted-foreground">
+          Tokens: <code>[titulo] [artista] [album] [genero] [tom] [bpm] [ano] [versao] [arquivo]</code>
+        </p>
 
         <div className="mb-1 flex items-center justify-between">
           <label className="block text-xs text-muted-foreground">

@@ -4,6 +4,25 @@ import type { Lens } from "@/lib/analysis";
 
 const COL_WIDTHS_KEY = "tracklistr.colWidths";
 const VIEW_KEY = "tracklistr.view";
+const TITLE_FORMAT_KEY = "tracklistr.titleFormat";
+
+export const DEFAULT_TITLE_FORMAT = "[titulo] - [artista] ([versao])";
+
+export function loadTitleFormat(): string {
+  try {
+    return localStorage.getItem(TITLE_FORMAT_KEY) || DEFAULT_TITLE_FORMAT;
+  } catch {
+    return DEFAULT_TITLE_FORMAT;
+  }
+}
+
+export function saveTitleFormat(fmt: string): void {
+  try {
+    localStorage.setItem(TITLE_FORMAT_KEY, fmt);
+  } catch {
+    // ignore
+  }
+}
 
 export interface ViewPrefs {
   filter: string;
