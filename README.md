@@ -269,8 +269,10 @@ semelhança. Usa a seleção ou a biblioteca inteira.
 **Cues / estrutura:** no menu de contexto (clique direito) → **Detectar cues / estrutura**.
 Analisa o **envelope de energia** da faixa inteira e detecta **Início, Build, Drop, Quebra/Break
 e Outro**, mostrando uma **mini-waveform** com os marcadores e a lista de cues (tempo + tipo).
-Heurística por energia, com os pontos **alinhados à grade de BPM** (snap por beat) quando o
-BPM é conhecido — um ponto de partida pra ajustar. Miniaturas de capa aparecem na tabela.
+Os pontos são alinhados a uma **grade de compassos**: o tempo vem da tag ou é estimado por
+**autocorrelação do onset (spectral flux)**, a **fase/downbeat** por dobramento do onset no
+período do beat, e os cues fazem **snap ao bar** (intro ao beat) — bem mais musical. Ainda é
+heurística (sem beat-tracking pleno); ouça no player e ajuste. Miniaturas de capa aparecem na tabela.
 
 **Cues no export do Rekordbox (Fase 2 — feito):** rode **Cues (sel.)** na barra (ou *Detectar
 cues* por faixa) e os cues detectados saem como **`POSITION_MARK` (Memory Cues)** dentro de

@@ -338,6 +338,97 @@ use crate::model::{Cue, StructureResult};
 const CUE_MAX_SECONDS: usize = 720;
 const ENV_POINTS: usize = 240;
 
+// Onset/tempo analysis (spectral flux novelty → autocorrelation tempo + phase).
+const NOV_FFT: usize = 2048;
+const NOV_HOP: usize = 512;
+
+/// Spectral-flux onset strength per STFT frame, plus the hop in seconds.
+fn onset_strength(mono: &[f32], sample_rate: u32) -> (Vec<f32>, f32) {
+    let hop_s = NOV_HOP as f32 / sample_rate.max(1) as f32;
+    if mono.len() < NOV_FFT {
+        return (Vec::new(), hop_s);
+    }
+    let hann: Vec<f32> = (0..NOV_FFT)
+        .map(|i| 0.5 - 0.5 * ((2.0 * PI * i as f32) / (NOV_FFT as f32 - 1.0)).cos())
+        .collect();
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(NOV_FFT);
+    let half = NOV_FFT / 2;
+    let mut prev = vec![0f32; half];
+    let mut flux = Vec::new();
+    let mut pos = 0usize;
+    while pos + NOV_FFT <= mono.len() {
+        let mut buf: Vec<Complex<f32>> = (0..NOV_FFT)
+            .map(|i| Complex { re: mono[pos + i] * hann[i], im: 0.0 })
+            .collect();
+        fft.process(&mut buf);
+        let mut f = 0f32;
+        for (i, slot) in prev.iter_mut().enumerate() {
+            let mag = buf[i].norm();
+            let d = mag - *slot;
+            if d > 0.0 {
+                f += d;
+            }
+            *slot = mag;
+        }
+        flux.push(f);
+        pos += NOV_HOP;
+    }
+    (flux, hop_s)
+}
+
+/// Estimate tempo (BPM) via autocorrelation of the onset envelope (0 if none).
+fn estimate_tempo(onset: &[f32], hop_s: f32) -> f32 {
+    if onset.len() < 64 || hop_s <= 0.0 {
+        return 0.0;
+    }
+    let mean = onset.iter().sum::<f32>() / onset.len() as f32;
+    let x: Vec<f32> = onset.iter().map(|v| v - mean).collect();
+    let min_lag = (60.0 / (180.0 * hop_s)).round() as usize;
+    let max_lag = ((60.0 / (70.0 * hop_s)).round() as usize).min(x.len() / 2).max(min_lag + 1);
+    let mut best_lag = 0usize;
+    let mut best = f32::MIN;
+    for lag in min_lag..=max_lag {
+        let mut ac = 0f32;
+        for i in 0..(x.len() - lag) {
+            ac += x[i] * x[i + lag];
+        }
+        if ac > best {
+            best = ac;
+            best_lag = lag;
+        }
+    }
+    if best_lag == 0 {
+        0.0
+    } else {
+        60.0 / (best_lag as f32 * hop_s)
+    }
+}
+
+/// Estimate the beat phase (downbeat offset in seconds, 0..beat) by folding the
+/// onset strength at the beat period and taking the strongest offset.
+fn estimate_phase(onset: &[f32], hop_s: f32, beat: f32) -> f32 {
+    if onset.is_empty() || beat <= 0.0 || hop_s <= 0.0 {
+        return 0.0;
+    }
+    let period = (beat / hop_s).round().max(1.0) as usize;
+    let mut best_off = 0usize;
+    let mut best = f32::MIN;
+    for off in 0..period {
+        let mut s = 0f32;
+        let mut i = off;
+        while i < onset.len() {
+            s += onset[i];
+            i += period;
+        }
+        if s > best {
+            best = s;
+            best_off = off;
+        }
+    }
+    best_off as f32 * hop_s
+}
+
 fn smooth(values: &[f32], radius: usize) -> Vec<f32> {
     if radius == 0 {
         return values.to_vec();
@@ -451,19 +542,64 @@ pub fn detect_cues(path: &str) -> Result<StructureResult, String> {
         deduped.push(c);
     }
 
-    let bpm = crate::tags::read_tags(path).ok().and_then(|t| t.bpm);
+    // Beat grid: tempo from tags (or estimated from the onset envelope) and the
+    // downbeat phase from folding the onset strength at the beat period. Cues
+    // snap to bars (phrase-friendly), the intro to the nearest beat.
+    let (onset, hop_s) = onset_strength(&mono, sample_rate);
+    let tag_bpm = crate::tags::read_tags(path).ok().and_then(|t| t.bpm);
+    let bpm_f = match tag_bpm {
+        Some(b) if b > 0 => b as f32,
+        _ => estimate_tempo(&onset, hop_s),
+    };
+    let bpm = if bpm_f >= 40.0 { Some(bpm_f.round() as u32) } else { None };
 
-    // Snap cues to the BPM beat grid (phase anchored on the first cue).
-    if let Some(bpm) = bpm {
-        if bpm > 0 {
-            let beat = 60.0 / bpm as f32;
-            let anchor = deduped.first().map(|c| c.position_secs).unwrap_or(0.0);
-            for c in deduped.iter_mut() {
-                let n = ((c.position_secs - anchor) / beat).round();
-                c.position_secs = (anchor + n * beat).max(0.0);
-            }
+    if bpm_f >= 40.0 {
+        let beat = 60.0 / bpm_f;
+        let phase = estimate_phase(&onset, hop_s, beat);
+        let bar = beat * 4.0;
+        for c in deduped.iter_mut() {
+            let grid = if c.kind == "intro" { beat } else { bar };
+            let n = ((c.position_secs - phase) / grid).round();
+            c.position_secs = (phase + n * grid).max(0.0);
         }
+        deduped.dedup_by(|a, b| (a.position_secs - b.position_secs).abs() < 0.05);
     }
 
     Ok(StructureResult { file_path: path.to_string(), duration_secs, bpm, envelope, cues: deduped })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{estimate_phase, estimate_tempo};
+
+    #[test]
+    fn tempo_from_pulse_train() {
+        let hop_s = 512.0f32 / 44100.0; // ~0.01161 s
+        let beat = 0.5f32; // 120 BPM
+        let period = (beat / hop_s).round() as usize; // ~43
+        let mut onset = vec![0f32; 4000];
+        let mut i = 0;
+        while i < onset.len() {
+            onset[i] = 1.0;
+            i += period;
+        }
+        let bpm = estimate_tempo(&onset, hop_s);
+        assert!((bpm - 120.0).abs() < 4.0, "got {bpm}");
+    }
+
+    #[test]
+    fn phase_from_offset() {
+        let hop_s = 512.0f32 / 44100.0;
+        let beat = 0.5f32;
+        let period = (beat / hop_s).round() as usize;
+        let off = 11usize;
+        let mut onset = vec![0f32; 4000];
+        let mut i = off;
+        while i < onset.len() {
+            onset[i] = 1.0;
+            i += period;
+        }
+        let phase = estimate_phase(&onset, hop_s, beat);
+        assert!((phase - off as f32 * hop_s).abs() < hop_s * 1.5, "got {phase}");
+    }
 }
