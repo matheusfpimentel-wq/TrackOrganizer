@@ -13,6 +13,30 @@ pub fn scan_folder(path: String, recursive: bool) -> Vec<ScannedTrack> {
     scan::scan_folder(&path, recursive)
 }
 
+/// Streaming + parallel scan: returns the total count immediately and emits
+/// `scan-batch` (Vec<ScannedTrack>) events as files are parsed in parallel,
+/// then `scan-done`. Keeps the UI responsive for huge libraries.
+#[tauri::command]
+pub fn scan_folder_stream(app: tauri::AppHandle, path: String, recursive: bool) -> usize {
+    use rayon::prelude::*;
+    use tauri::Emitter;
+
+    let paths = scan::collect_audio_paths(&path, recursive);
+    let total = paths.len();
+
+    std::thread::spawn(move || {
+        const CHUNK: usize = 128;
+        for chunk in paths.chunks(CHUNK) {
+            let tracks: Vec<ScannedTrack> =
+                chunk.par_iter().map(|p| scan::scanned_track(p)).collect();
+            let _ = app.emit("scan-batch", tracks);
+        }
+        let _ = app.emit("scan-done", total);
+    });
+
+    total
+}
+
 /// Re-read a single file's tags from disk.
 #[tauri::command]
 pub fn read_tags(path: String) -> Result<TrackTags, String> {

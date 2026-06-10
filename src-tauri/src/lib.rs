@@ -15,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::scan_folder,
+            commands::scan_folder_stream,
             commands::read_tags,
             commands::get_artwork,
             commands::write_tags,

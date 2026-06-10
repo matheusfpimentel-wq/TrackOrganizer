@@ -71,6 +71,14 @@ export async function scanFolder(path: string, recursive: boolean): Promise<Scan
   return invoke<ScannedTrack[]>("scan_folder", { path, recursive });
 }
 
+/**
+ * Start a streaming + parallel scan. Returns the total file count immediately;
+ * tracks arrive via `scan-batch` / `scan-done` events (see store.scan).
+ */
+export async function scanFolderStream(path: string, recursive: boolean): Promise<number> {
+  return invoke<number>("scan_folder_stream", { path, recursive });
+}
+
 /** Re-read a single file's tags from disk. */
 export async function readTags(path: string): Promise<TrackTags> {
   return invoke<TrackTags>("read_tags", { path });
