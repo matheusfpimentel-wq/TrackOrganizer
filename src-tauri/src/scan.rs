@@ -54,6 +54,23 @@ pub fn scanned_track(path: &Path) -> ScannedTrack {
     }
 }
 
+/// Collect the audio file paths under `root` (sorted by file name), without
+/// parsing them — used to drive a parallel/streaming scan.
+pub fn collect_audio_paths(root: &str, recursive: bool) -> Vec<std::path::PathBuf> {
+    let mut paths: Vec<std::path::PathBuf> = WalkDir::new(root)
+        .follow_links(false)
+        .max_depth(if recursive { usize::MAX } else { 1 })
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file() && is_audio(e.path()))
+        .map(|e| e.into_path())
+        .collect();
+    paths.sort_by_key(|p| {
+        p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default()
+    });
+    paths
+}
+
 /// Recursively scan `root` for supported audio files.
 ///
 /// Unreadable files are included with their `error` set rather than aborting

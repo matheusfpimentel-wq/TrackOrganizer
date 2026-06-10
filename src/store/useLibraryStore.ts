@@ -13,6 +13,7 @@ import {
   type TrackRow,
   type TrackTags,
 } from "@/types/track";
+import { listen } from "@tauri-apps/api/event";
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
@@ -44,6 +45,7 @@ interface LibraryState {
   editPast: TrackRow[][];
   editFuture: TrackRow[][];
   scanning: boolean;
+  scanProgress: { done: number; total: number } | null;
   globalError: string | null;
   filter: string;
   /** Active analysis lens (all / duplicates / no-genre / issues). */
@@ -289,6 +291,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   editPast: [],
   editFuture: [],
   scanning: false,
+  scanProgress: null,
   globalError: null,
   filter: INITIAL_VIEW.filter,
   lens: INITIAL_VIEW.lens,
@@ -345,12 +348,58 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!folder) {
       return;
     }
-    set({ scanning: true, folder, selection: new Set<string>(), anchor: null });
+    set({
+      scanning: true,
+      folder,
+      rows: [],
+      selection: new Set<string>(),
+      anchor: null,
+      editPast: [],
+      editFuture: [],
+      artwork: {},
+      scanProgress: { done: 0, total: 0 },
+    });
+
+    // Browser dev fallback: no streaming, just load the sample.
+    if (!api.isTauri()) {
+      try {
+        const scanned = await api.scanFolder(folder, recursive);
+        set({ rows: scanned.map(rowFromScan), scanning: false, scanProgress: null });
+      } catch (err) {
+        set({ scanning: false, scanProgress: null, globalError: String(err) });
+      }
+      return;
+    }
+
+    // Streaming + parallel scan: tracks arrive in batches via events.
+    const unlistenBatch = await listen<ScannedTrack[]>("scan-batch", (e) => {
+      const batch = e.payload.map(rowFromScan);
+      set((state) => ({
+        rows: [...state.rows, ...batch],
+        scanProgress: {
+          done: state.rows.length + batch.length,
+          total: state.scanProgress?.total ?? 0,
+        },
+      }));
+    });
+    const unlistenDone = await listen("scan-done", () => {
+      set({ scanning: false, scanProgress: null });
+      unlistenBatch();
+      unlistenDone();
+    });
+
     try {
-      const scanned = await api.scanFolder(folder, recursive);
-      set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [], artwork: {} });
+      const total = await api.scanFolderStream(folder, recursive);
+      set((state) => ({ scanProgress: { done: state.rows.length, total } }));
+      if (total === 0) {
+        set({ scanning: false, scanProgress: null });
+        unlistenBatch();
+        unlistenDone();
+      }
     } catch (err) {
-      set({ scanning: false, globalError: String(err) });
+      set({ scanning: false, scanProgress: null, globalError: String(err) });
+      unlistenBatch();
+      unlistenDone();
     }
   },
 

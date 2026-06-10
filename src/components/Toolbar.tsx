@@ -14,6 +14,7 @@ export function Toolbar({ onOpenSettings }: Props) {
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
   const scanning = useLibraryStore((s) => s.scanning);
+  const scanProgress = useLibraryStore((s) => s.scanProgress);
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
   const rows = useLibraryStore((s) => s.rows);
@@ -63,7 +64,11 @@ export function Toolbar({ onOpenSettings }: Props) {
     <div className="border-b border-border bg-muted/40">
       <div className="flex items-center gap-2 px-3 py-2">
         <Button onClick={() => void scan(false)} disabled={scanning} title="Escanear só esta pasta">
-          {scanning ? "Escaneando…" : "Abrir pasta"}
+          {scanning
+            ? scanProgress && scanProgress.total > 0
+              ? `Escaneando ${scanProgress.done}/${scanProgress.total}…`
+              : "Escaneando…"
+            : "Abrir pasta"}
         </Button>
         <Button
           variant="outline"
