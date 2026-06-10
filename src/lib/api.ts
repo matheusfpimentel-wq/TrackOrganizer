@@ -95,6 +95,18 @@ export async function getArtwork(path: string): Promise<string | null> {
   return invoke<string | null>("get_artwork", { path });
 }
 
+/** Rename a file on disk to `newBase` + its extension. Returns the new path. */
+export async function renameFile(path: string, newBase: string): Promise<string> {
+  if (!isTauri()) {
+    // Dev stub: pretend it renamed within the same folder.
+    const slash = path.lastIndexOf("/");
+    const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
+    const ext = path.slice(path.lastIndexOf("."));
+    return `${dir}${newBase}${ext}`;
+  }
+  return invoke<string>("rename_file", { path, newBase });
+}
+
 /** Reveal a file in the OS file manager (Finder / Explorer). */
 export async function revealInFiles(path: string): Promise<void> {
   if (!isTauri()) {

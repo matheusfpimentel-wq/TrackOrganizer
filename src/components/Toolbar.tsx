@@ -13,6 +13,7 @@ interface Props {
 
 export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
   const applyTitlePattern = useLibraryStore((s) => s.applyTitlePattern);
+  const renameToTitle = useLibraryStore((s) => s.renameToTitle);
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
   const scanning = useLibraryStore((s) => s.scanning);
@@ -112,6 +113,24 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
           title="Aplicar o padrão de nome (engrenagem) ao Título das faixas selecionadas (ou todas)"
         >
           Aplicar padrão
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={selection.size === 0}
+          onClick={() => {
+            const ids = new Set<string>();
+            for (const key of selection) {
+              const sep = key.indexOf("::");
+              if (sep > 0) ids.add(key.slice(0, sep));
+            }
+            if (window.confirm(`Renomear ${ids.size} arquivo(s) no disco para o Título?`)) {
+              void renameToTitle([...ids]);
+            }
+          }}
+          title="Renomear os arquivos das faixas selecionadas para o Título (no disco)"
+        >
+          Renomear arq.
         </Button>
 
         <div className="ml-auto flex items-center gap-2">
