@@ -33,13 +33,12 @@ pub fn scanned_track(path: &Path) -> ScannedTrack {
         .unwrap_or_default();
     let format = extension(path).unwrap_or_default();
 
-    let exists = path.is_file();
-    let (tags, error) = if !exists {
-        (Default::default(), Some("arquivo não encontrado".to_string()))
+    let (tags, duration_secs, has_artwork, error) = if !path.is_file() {
+        (Default::default(), None, false, Some("arquivo não encontrado".to_string()))
     } else {
-        match tags::read_tags(&file_path) {
-            Ok(t) => (t, None),
-            Err(e) => (Default::default(), Some(e)),
+        match tags::read_meta(&file_path) {
+            Ok((t, dur, art)) => (t, dur, art, None),
+            Err(e) => (Default::default(), None, false, Some(e)),
         }
     };
 
@@ -48,8 +47,8 @@ pub fn scanned_track(path: &Path) -> ScannedTrack {
         file_path: file_path.clone(),
         file_name,
         format,
-        has_artwork: error.is_none() && tags::has_artwork(&file_path),
-        duration_secs: if error.is_none() { tags::read_duration(&file_path) } else { None },
+        has_artwork,
+        duration_secs,
         tags,
         error,
     }
@@ -59,10 +58,13 @@ pub fn scanned_track(path: &Path) -> ScannedTrack {
 ///
 /// Unreadable files are included with their `error` set rather than aborting
 /// the whole scan, so the user still sees them in the grid.
-pub fn scan_folder(root: &str) -> Vec<ScannedTrack> {
+pub fn scan_folder(root: &str, recursive: bool) -> Vec<ScannedTrack> {
     let mut out = Vec::new();
 
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(Result::ok) {
+    let walker = WalkDir::new(root)
+        .follow_links(false)
+        .max_depth(if recursive { usize::MAX } else { 1 });
+    for entry in walker.into_iter().filter_map(Result::ok) {
         let path = entry.path();
         if !entry.file_type().is_file() || !is_audio(path) {
             continue;

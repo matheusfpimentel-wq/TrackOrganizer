@@ -97,6 +97,14 @@ export function TrackGrid() {
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  useEffect(() => {
+    const stop = () => {
+      draggingRef.current = false;
+    };
+    window.addEventListener("mouseup", stop);
+    return () => window.removeEventListener("mouseup", stop);
+  }, []);
 
   // Resizable, persisted column widths.
   const [widths, setWidths] = useState<Record<string, number>>(() => loadColWidths(DEFAULT_WIDTHS));
@@ -217,8 +225,24 @@ export function TrackGrid() {
       }
       setSelection(new Set([cellKey(rowId, colKey)]));
       setAnchor({ rowId, colKey });
+      draggingRef.current = true; // begin drag-select
     },
     [anchor, buildRange, colIndexByKey, editing, rowIndexById, selection, setAnchor, setSelection],
+  );
+
+  const onCellMouseEnter = useCallback(
+    (rowId: string, colKey: TagKey) => {
+      if (!draggingRef.current || !anchor) return;
+      const aRow = rowIndexById.get(anchor.rowId);
+      const aCol = colIndexByKey.get(anchor.colKey);
+      const rowIndex = rowIndexById.get(rowId);
+      const colIndex = colIndexByKey.get(colKey);
+      if (aRow === undefined || aCol === undefined || rowIndex === undefined || colIndex === undefined) {
+        return;
+      }
+      setSelection(buildRange(aRow, aCol, rowIndex, colIndex));
+    },
+    [anchor, buildRange, colIndexByKey, rowIndexById, setSelection],
   );
 
   const selectColumn = useCallback(
@@ -257,6 +281,70 @@ export function TrackGrid() {
     setCell(editing.rowId, editing.colKey, draft);
     setEditing(null);
   }, [draft, editing, setCell]);
+
+  // Copy the bounding rectangle of the selected cells as TSV.
+  const copySelection = useCallback(() => {
+    if (selection.size === 0) return;
+    let minR = Infinity;
+    let maxR = -1;
+    let minC = Infinity;
+    let maxC = -1;
+    for (const key of selection) {
+      const sep = key.indexOf("::");
+      const r = rowIndexById.get(key.slice(0, sep));
+      const c = colIndexByKey.get(key.slice(sep + 2) as TagKey);
+      if (r === undefined || c === undefined) continue;
+      minR = Math.min(minR, r);
+      maxR = Math.max(maxR, r);
+      minC = Math.min(minC, c);
+      maxC = Math.max(maxC, c);
+    }
+    if (maxR < 0) return;
+    const lines: string[] = [];
+    for (let r = minR; r <= maxR; r++) {
+      const row = visible[r];
+      if (!row) continue;
+      const vals: string[] = [];
+      for (let c = minC; c <= maxC; c++) {
+        const col = COLUMNS[c];
+        if (col) vals.push(displayValue(row.edited[col.key]));
+      }
+      lines.push(vals.join("\t"));
+    }
+    void navigator.clipboard.writeText(lines.join("\n"));
+  }, [selection, visible, rowIndexById, colIndexByKey]);
+
+  // Paste TSV starting at the anchor; a single value fills the whole selection.
+  const pasteClipboard = useCallback(async () => {
+    if (!anchor) return;
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return;
+    }
+    if (!text) return;
+    const grid = text.replace(/\r/g, "").replace(/\n$/, "").split("\n").map((l) => l.split("\t"));
+    const single = grid.length === 1 && grid[0]?.length === 1 ? (grid[0][0] ?? "") : null;
+    if (single !== null && selection.size > 1) {
+      for (const key of selection) {
+        const sep = key.indexOf("::");
+        setCell(key.slice(0, sep), key.slice(sep + 2) as TagKey, single);
+      }
+      return;
+    }
+    const aRow = rowIndexById.get(anchor.rowId);
+    const aCol = colIndexByKey.get(anchor.colKey);
+    if (aRow === undefined || aCol === undefined) return;
+    grid.forEach((cols, i) => {
+      const row = visible[aRow + i];
+      if (!row) return;
+      cols.forEach((val, j) => {
+        const col = COLUMNS[aCol + j];
+        if (col) setCell(row.id, col.key, val);
+      });
+    });
+  }, [anchor, selection, visible, rowIndexById, colIndexByKey, setCell]);
 
   const onInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -320,6 +408,16 @@ export function TrackGrid() {
           redoEdit();
           return;
         }
+        if (k === "c") {
+          e.preventDefault();
+          copySelection();
+          return;
+        }
+        if (k === "v") {
+          e.preventDefault();
+          void pasteClipboard();
+          return;
+        }
       }
       switch (e.key) {
         case "Delete":
@@ -367,7 +465,7 @@ export function TrackGrid() {
           }
       }
     },
-    [anchor, beginEdit, clearCells, editing, moveActive, redoEdit, rowIndexById, selection, undoEdit, visible],
+    [anchor, beginEdit, clearCells, copySelection, editing, moveActive, pasteClipboard, redoEdit, rowIndexById, selection, undoEdit, visible],
   );
 
   if (rows.length === 0) {
@@ -389,7 +487,7 @@ export function TrackGrid() {
       }}
       className="h-full overflow-auto outline-none"
     >
-      <table className="w-max border-collapse text-sm">
+      <table className="w-max select-none border-collapse text-sm">
         <thead className="sticky top-0 z-10 bg-muted">
           <tr>
             <th className="sticky left-0 z-20 w-12 border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
@@ -501,6 +599,7 @@ export function TrackGrid() {
                     key={col.key}
                     style={cellStyle}
                     onMouseDown={(e) => onCellMouseDown(e, row.id, col.key)}
+                    onMouseEnter={() => onCellMouseEnter(row.id, col.key)}
                     onDoubleClick={() => beginEdit(row, col.key)}
                     className={cn(
                       "border border-border px-2 py-1 align-middle",

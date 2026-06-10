@@ -94,7 +94,7 @@ interface LibraryState {
   artwork: Record<string, string | null>;
   loadArtwork: (rowId: string) => Promise<void>;
 
-  scan: () => Promise<void>;
+  scan: (recursive: boolean) => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
   setLens: (lens: Lens) => void;
@@ -288,7 +288,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   anchor: null,
 
   config: {
-    provider: "claude",
+    provider: "ollama",
     model: "claude-sonnet-4-6",
     charLimit: 50,
     hasApiKey: false,
@@ -329,7 +329,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   cueBatchProgress: null,
   artwork: {},
 
-  scan: async () => {
+  scan: async (recursive) => {
     set({ globalError: null });
     const folder = await api.pickFolder();
     if (!folder) {
@@ -337,7 +337,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     set({ scanning: true, folder, selection: new Set<string>(), anchor: null });
     try {
-      const scanned = await api.scanFolder(folder);
+      const scanned = await api.scanFolder(folder, recursive);
       set({ rows: scanned.map(rowFromScan), scanning: false, editPast: [], editFuture: [], artwork: {} });
     } catch (err) {
       set({ scanning: false, globalError: String(err) });
