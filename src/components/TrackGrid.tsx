@@ -55,6 +55,7 @@ export function TrackGrid() {
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
   const detectCues = useLibraryStore((s) => s.detectCues);
   const writeSeratoCues = useLibraryStore((s) => s.writeSeratoCues);
+  const playRow = useLibraryStore((s) => s.playRow);
   const undoEdit = useLibraryStore((s) => s.undoEdit);
   const redoEdit = useLibraryStore((s) => s.redoEdit);
   const artwork = useLibraryStore((s) => s.artwork);
@@ -569,7 +570,11 @@ export function TrackGrid() {
                   {issues && issues.length > 0 && <span className="font-bold text-dirty">!</span>}
                 </div>
               </td>
-              <td className="border border-border p-0.5 text-center align-middle">
+              <td
+                className="cursor-pointer border border-border p-0.5 text-center align-middle hover:bg-accent"
+                onClick={() => playRow(row.id)}
+                title="Tocar"
+              >
                 {artwork[row.id] ? (
                   <img
                     src={artwork[row.id] as string}
@@ -685,6 +690,15 @@ export function TrackGrid() {
             className="fixed z-50 w-52 overflow-hidden rounded-md border border-border bg-background py-1 text-sm shadow-xl"
             style={{ left: menu.x, top: menu.y }}
           >
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent"
+              onClick={() => {
+                playRow(menu.row.id);
+                setMenu(null);
+              }}
+            >
+              ▶ Tocar
+            </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent"
               onClick={() => {

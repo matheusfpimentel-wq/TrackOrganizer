@@ -94,6 +94,14 @@ interface LibraryState {
   artwork: Record<string, string | null>;
   loadArtwork: (rowId: string) => Promise<void>;
 
+  /** Row currently loaded in the player (null = nothing). */
+  playingRowId: string | null;
+  /** Seek request (secs) for the player to honor, then clear. */
+  seekTo: number | null;
+  playRow: (rowId: string) => void;
+  requestSeek: (secs: number) => void;
+  clearSeek: () => void;
+
   scan: (recursive: boolean) => Promise<void>;
   importLibrary: () => Promise<void>;
   setFilter: (value: string) => void;
@@ -328,6 +336,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   cueBatchRunning: false,
   cueBatchProgress: null,
   artwork: {},
+  playingRowId: null,
+  seekTo: null,
 
   scan: async (recursive) => {
     set({ globalError: null });
@@ -845,6 +855,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // keep null
     }
   },
+
+  playRow: (rowId) => set({ playingRowId: rowId }),
+  requestSeek: (secs) => set({ seekTo: secs }),
+  clearSeek: () => set({ seekTo: null }),
 
   writeSeratoCues: async (rowId) => {
     const { rows, cuesByRow } = get();
