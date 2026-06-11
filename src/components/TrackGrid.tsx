@@ -56,6 +56,7 @@ export function TrackGrid() {
   const detectCues = useLibraryStore((s) => s.detectCues);
   const writeSeratoCues = useLibraryStore((s) => s.writeSeratoCues);
   const playRow = useLibraryStore((s) => s.playRow);
+  const renameToTitle = useLibraryStore((s) => s.renameToTitle);
   const undoEdit = useLibraryStore((s) => s.undoEdit);
   const redoEdit = useLibraryStore((s) => s.redoEdit);
   const artwork = useLibraryStore((s) => s.artwork);
@@ -732,6 +733,19 @@ export function TrackGrid() {
               }}
             >
               Gravar cues no Serato (MP3/FLAC)
+            </button>
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+              disabled={!menu.row.edited.title.trim()}
+              onClick={() => {
+                const ok = window.confirm(
+                  `Renomear o arquivo para "${menu.row.edited.title}"? (renomeia no disco)`,
+                );
+                if (ok) void renameToTitle([menu.row.id]);
+                setMenu(null);
+              }}
+            >
+              Renomear arquivo p/ título
             </button>
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent"

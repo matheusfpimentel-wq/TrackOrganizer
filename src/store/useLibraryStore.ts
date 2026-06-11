@@ -117,6 +117,8 @@ interface LibraryState {
   setTitleFormat: (fmt: string) => void;
   applyTitlePattern: () => void;
   findReplace: (col: TagKey, find: string, repl: string, selectionOnly: boolean, ci: boolean) => void;
+  /** Rename the given rows' files on disk to match their (edited) Title. */
+  renameToTitle: (rowIds: string[]) => Promise<void>;
   undoEdit: () => void;
   redoEdit: () => void;
   setSelection: (keys: Set<string>) => void;
@@ -565,6 +567,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       });
       return { ...historyPatch(state), rows };
     });
+  },
+
+  renameToTitle: async (rowIds) => {
+    const ids = new Set(rowIds);
+    const targets = get().rows.filter((r) => ids.has(r.id) && !r.error && r.edited.title.trim());
+    if (targets.length === 0) {
+      set({ globalError: "Selecione faixas com título para renomear." });
+      return;
+    }
+    set({ writing: true, globalError: null, writeResult: null });
+    let ok = 0;
+    let failed = 0;
+    for (const row of targets) {
+      try {
+        const newPath = await api.renameFile(row.filePath, row.edited.title);
+        const slash = Math.max(newPath.lastIndexOf("/"), newPath.lastIndexOf("\\"));
+        const fileName = slash >= 0 ? newPath.slice(slash + 1) : newPath;
+        set((state) => ({
+          rows: state.rows.map((r) => (r.id === row.id ? { ...r, filePath: newPath, fileName } : r)),
+        }));
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    set({ writing: false, writeResult: { ok, failed, backupPath: "renomeação no disco" } });
   },
 
   setSelection: (keys) => set({ selection: keys }),

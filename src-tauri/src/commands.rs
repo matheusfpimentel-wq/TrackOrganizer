@@ -110,6 +110,39 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| format!("escrever arquivo: {e}"))
 }
 
+/// Rename a file on disk to `new_base` + original extension (same folder).
+/// Returns the new absolute path. Refuses to overwrite an existing file.
+#[tauri::command]
+pub fn rename_file(path: String, new_base: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    let dir = p.parent().ok_or("sem diretório")?;
+    let ext = p.extension().and_then(|e| e.to_str());
+
+    // Sanitize: drop path separators and characters illegal on Win/macOS.
+    let mut base: String = new_base
+        .chars()
+        .map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c })
+        .collect();
+    base = base.trim().trim_matches('.').to_string();
+    if base.is_empty() {
+        return Err("nome vazio".into());
+    }
+
+    let file_name = match ext {
+        Some(e) => format!("{base}.{e}"),
+        None => base,
+    };
+    let dest = dir.join(&file_name);
+    if dest == p {
+        return Ok(path);
+    }
+    if dest.exists() {
+        return Err(format!("já existe um arquivo chamado {file_name}"));
+    }
+    fs::rename(p, &dest).map_err(|e| format!("renomear: {e}"))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 /// Reveal a file in the OS file manager (Finder / Explorer / default).
 #[tauri::command]
 pub fn reveal_in_files(path: String) -> Result<(), String> {
