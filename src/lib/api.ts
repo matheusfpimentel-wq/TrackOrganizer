@@ -295,7 +295,7 @@ const DEV_CONFIG: PublicConfig = {
   model: "claude-sonnet-4-6",
   charLimit: 50,
   hasApiKey: true,
-  ollamaUrl: "http://localhost:11434",
+  ollamaUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.1",
   genres: [],
   genreStrict: false,
@@ -352,4 +352,26 @@ export async function tagWithAi(request: AiRequest): Promise<{ suggestions: AiSu
     return { suggestions: mockAiSuggestions(request.tracks, request.fields, request.charLimit) };
   }
   return invoke<{ suggestions: AiSuggestion[] }>("tag_with_ai", { request });
+}
+
+export interface OllamaStatus {
+  ok: boolean;
+  url: string;
+  models: string[];
+  modelPresent: boolean;
+  error: string | null;
+}
+
+/** Probe the configured Ollama server: is it reachable and is the model present? */
+export async function checkOllama(): Promise<OllamaStatus> {
+  if (!isTauri()) {
+    return {
+      ok: true,
+      url: DEV_CONFIG.ollamaUrl,
+      models: [DEV_CONFIG.ollamaModel],
+      modelPresent: true,
+      error: null,
+    };
+  }
+  return invoke<OllamaStatus>("check_ollama");
 }

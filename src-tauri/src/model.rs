@@ -150,6 +150,23 @@ pub struct DupGroup {
     pub similarity: f32,
 }
 
+/// Result of a connectivity probe against the local Ollama server.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaStatus {
+    /// True when the server answered `/api/tags`.
+    pub ok: bool,
+    /// The URL that actually answered (may differ from the configured one when
+    /// a `localhost` → `127.0.0.1` fallback was used).
+    pub url: String,
+    /// Names of the models installed on the server.
+    pub models: Vec<String>,
+    /// True when the currently configured model is among `models`.
+    pub model_present: bool,
+    /// Human-readable failure reason when `ok` is false.
+    pub error: Option<String>,
+}
+
 /// Public view of the local config (never exposes the API key to the frontend).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

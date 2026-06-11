@@ -17,7 +17,9 @@ fn default_provider() -> String {
 }
 
 fn default_ollama_url() -> String {
-    "http://localhost:11434".to_string()
+    // Prefer the literal IPv4 address: `localhost` can resolve to IPv6 `::1`,
+    // where Ollama (IPv4-only by default) refuses the connection.
+    "http://127.0.0.1:11434".to_string()
 }
 
 fn default_ollama_model() -> String {

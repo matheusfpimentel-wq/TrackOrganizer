@@ -1,5 +1,5 @@
 use crate::config;
-use crate::model::{AiRequest, AiResponse, AiSuggestion};
+use crate::model::{AiRequest, AiResponse, AiSuggestion, OllamaStatus};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
@@ -193,6 +193,19 @@ async fn call_claude(
     Err("A IA não retornou sugestões estruturadas.".into())
 }
 
+/// Candidate base URLs to try, in order. When the user configured `localhost`
+/// we append a `127.0.0.1` fallback: `localhost` often resolves to IPv6 `::1`
+/// first, but Ollama listens only on IPv4 by default, so the connection is
+/// refused. Trying the literal IPv4 address sidesteps that.
+fn ollama_candidates(base_url: &str) -> Vec<String> {
+    let primary = base_url.trim().trim_end_matches('/').to_string();
+    let mut out = vec![primary.clone()];
+    if primary.contains("localhost") {
+        out.push(primary.replace("localhost", "127.0.0.1"));
+    }
+    out
+}
+
 /// Call a local Ollama server (`/api/chat`) with a JSON-schema `format`.
 async fn call_ollama(
     base_url: &str,
@@ -213,15 +226,30 @@ async fn call_ollama(
     });
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{base_url}/api/chat"))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            format!("erro ao conectar no Ollama ({base_url}): {e}. O Ollama está rodando? (`ollama serve`)")
-        })?;
+    // Try each candidate URL; a connection (send) error falls through to the
+    // next one so the localhost → 127.0.0.1 fallback can kick in.
+    let mut resp = None;
+    let mut last_err = String::new();
+    for url in ollama_candidates(base_url) {
+        match client
+            .post(format!("{url}/api/chat"))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => {
+                resp = Some(r);
+                break;
+            }
+            Err(e) => last_err = format!("{e}"),
+        }
+    }
+    let resp = resp.ok_or_else(|| {
+        format!(
+            "erro ao conectar no Ollama ({base_url}): {last_err}. O Ollama está rodando? (`ollama serve`)"
+        )
+    })?;
 
     let status = resp.status();
     let value: Value = resp.json().await.map_err(|e| format!("resposta inválida do Ollama: {e}"))?;
@@ -258,5 +286,66 @@ pub async fn tag_with_ai(app: AppHandle, request: AiRequest) -> Result<AiRespons
             return Err("API key não configurada. Abra Configurações e informe a chave.".into());
         }
         call_claude(&cfg.api_key, &cfg.model, system, user, schema).await
+    }
+}
+
+/// Probe the configured Ollama server (`GET /api/tags`) and report whether it is
+/// reachable and which models are installed. Used by the Settings "Test
+/// connection" button to give actionable diagnostics instead of a bare error.
+#[tauri::command]
+pub async fn check_ollama(app: AppHandle) -> OllamaStatus {
+    let cfg = config::load(&app);
+    let client = reqwest::Client::new();
+    let mut last_err = String::new();
+
+    for url in ollama_candidates(&cfg.ollama_url) {
+        match client.get(format!("{url}/api/tags")).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                match resp.json::<Value>().await {
+                    Ok(value) => {
+                        if !status.is_success() {
+                            last_err = format!("Ollama respondeu {status}");
+                            continue;
+                        }
+                        let models: Vec<String> = value
+                            .get("models")
+                            .and_then(Value::as_array)
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|m| {
+                                        m.get("name").and_then(Value::as_str).map(String::from)
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        // Match exact ("llama3.1:latest") or by base name ("llama3.1").
+                        let want = cfg.ollama_model.trim();
+                        let model_present = models.iter().any(|m| {
+                            m == want || m.split(':').next() == Some(want)
+                        });
+                        return OllamaStatus {
+                            ok: true,
+                            url,
+                            models,
+                            model_present,
+                            error: None,
+                        };
+                    }
+                    Err(e) => last_err = format!("resposta inválida do Ollama: {e}"),
+                }
+            }
+            Err(e) => last_err = format!("{e}"),
+        }
+    }
+
+    OllamaStatus {
+        ok: false,
+        url: cfg.ollama_url,
+        models: Vec::new(),
+        model_present: false,
+        error: Some(format!(
+            "Não foi possível conectar no Ollama: {last_err}. Verifique se ele está rodando (`ollama serve`)."
+        )),
     }
 }

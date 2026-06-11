@@ -95,8 +95,13 @@ Na engrenagem (⚙) escolha o **Provedor**:
 - **Claude (API paga):** informe a **API key** ([console.anthropic.com](https://console.anthropic.com))
   e o **modelo** (ex.: `claude-sonnet-4-6`; `claude-haiku-4-5-20251001` é mais barato e dá conta).
 - **Ollama (local, grátis):** rode `ollama serve`, baixe um modelo (`ollama pull llama3.1`)
-  e aponte a **URL** (default `http://localhost:11434`) e o **modelo**. Tudo roda na sua
-  máquina, sem custo e sem enviar a tracklist para nuvem nenhuma.
+  e aponte a **URL** (default `http://127.0.0.1:11434`) e o **modelo**. Use o botão
+  **Testar conexão** para confirmar que o servidor responde e que o modelo está instalado.
+  Tudo roda na sua máquina, sem custo e sem enviar a tracklist para nuvem nenhuma.
+  > Dica: se aparecer "erro ao conectar no Ollama", confirme que o `ollama serve` está
+  > rodando. Prefira `127.0.0.1` a `localhost` — em algumas máquinas `localhost` resolve
+  > para IPv6 (`::1`), onde o Ollama (só IPv4 por padrão) recusa a conexão. O app já tenta
+  > esse fallback automaticamente.
 
 **Banco de Gêneros:** ainda na engrenagem, você mantém um vocabulário de gêneros que a IA
 deve usar (um por linha). Em **modo estrito** a IA só pode escolher rótulos da lista

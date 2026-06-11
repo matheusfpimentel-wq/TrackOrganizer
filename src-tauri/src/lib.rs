@@ -34,6 +34,7 @@ pub fn run() {
             config::update_config,
             config::clear_api_key,
             ai::tag_with_ai,
+            ai::check_ollama,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tracklistr");

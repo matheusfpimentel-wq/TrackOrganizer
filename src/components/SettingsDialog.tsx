@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { AiProvider, ConfigPatch } from "@/lib/api";
+import type { AiProvider, ConfigPatch, OllamaStatus } from "@/lib/api";
+import { checkOllama } from "@/lib/api";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,8 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [genreStrict, setGenreStrict] = useState(config.genreStrict);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<OllamaStatus | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -40,6 +43,7 @@ export function SettingsDialog({ open, onClose }: Props) {
       setGenreStrict(config.genreStrict);
       setApiKey("");
       setError(null);
+      setTestResult(null);
     }
   }, [open, config]);
 
@@ -89,6 +93,26 @@ export function SettingsDialog({ open, onClose }: Props) {
       setError(String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Persist the on-screen Ollama settings, then probe the server so the test
+  // reflects exactly what the user just typed.
+  const testConnection = async () => {
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      await saveConfig({
+        provider: "ollama",
+        ollamaUrl: ollamaUrl.trim(),
+        ollamaModel: ollamaModel.trim(),
+      });
+      setTestResult(await checkOllama());
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -146,7 +170,7 @@ export function SettingsDialog({ open, onClose }: Props) {
             <Input
               value={ollamaUrl}
               onChange={(e) => setOllamaUrl(e.target.value)}
-              placeholder="http://localhost:11434"
+              placeholder="http://127.0.0.1:11434"
               className="mb-3 w-full"
             />
             <label className="mb-1 block text-xs text-muted-foreground">Modelo Ollama</label>
@@ -156,10 +180,48 @@ export function SettingsDialog({ open, onClose }: Props) {
               placeholder="llama3.1"
               className="mb-1 w-full"
             />
-            <p className="mb-4 text-[11px] text-muted-foreground">
+            <p className="mb-2 text-[11px] text-muted-foreground">
               Rode <code>ollama serve</code> e baixe o modelo com{" "}
               <code>ollama pull {ollamaModel || "llama3.1"}</code>. Tudo roda local, sem custo.
             </p>
+            <div className="mb-2">
+              <Button variant="outline" size="sm" onClick={() => void testConnection()} disabled={testing}>
+                {testing ? "Testando…" : "Testar conexão"}
+              </Button>
+            </div>
+            {testResult && (
+              <div
+                className={cn(
+                  "mb-4 rounded-md border px-2.5 py-2 text-[11px]",
+                  testResult.ok
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-danger/40 bg-danger/10 text-foreground",
+                )}
+              >
+                {testResult.ok ? (
+                  <>
+                    <p className="font-medium text-primary">
+                      Conectado em {testResult.url}
+                    </p>
+                    {testResult.models.length > 0 ? (
+                      <p className="mt-1 text-muted-foreground">
+                        Modelos instalados: {testResult.models.join(", ")}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">Nenhum modelo instalado ainda.</p>
+                    )}
+                    {!testResult.modelPresent && (
+                      <p className="mt-1 text-dirty">
+                        O modelo "{ollamaModel || "llama3.1"}" não está instalado. Rode{" "}
+                        <code>ollama pull {ollamaModel || "llama3.1"}</code>.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-danger">{testResult.error}</p>
+                )}
+              </div>
+            )}
           </>
         )}
 
