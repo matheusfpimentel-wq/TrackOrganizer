@@ -27,6 +27,9 @@ const AI_FIELD_SET: ReadonlySet<string> = new Set<string>(AI_FIELDS);
 /** Tracks per AI request, to avoid token blowups (spec: ~20). */
 const AI_CHUNK = 20;
 
+/** Top-level UI mode. */
+export type AppMode = "library" | "analysis" | "export";
+
 interface WriteSummary {
   ok: number;
   failed: number;
@@ -57,6 +60,10 @@ interface LibraryState {
   anchor: { rowId: string; colKey: TagKey } | null;
 
   config: PublicConfig;
+
+  /** Active top-level mode (Library / Analysis / Export). */
+  mode: AppMode;
+  setMode: (mode: AppMode) => void;
 
   aiRunning: boolean;
   aiProgress: { done: number; total: number } | null;
@@ -431,6 +438,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ scanning: false, globalError: String(err) });
     }
   },
+
+  mode: "library",
+  setMode: (mode) => set({ mode }),
 
   setFilter: (value) => {
     set({ filter: value });

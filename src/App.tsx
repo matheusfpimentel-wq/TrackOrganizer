@@ -19,6 +19,14 @@ export default function App() {
   const loadConfig = useLibraryStore((s) => s.loadConfig);
   const writeResult = useLibraryStore((s) => s.writeResult);
   const clearWriteResult = useLibraryStore((s) => s.clearWriteResult);
+  const mode = useLibraryStore((s) => s.mode);
+  const setMode = useLibraryStore((s) => s.setMode);
+
+  const MODES = [
+    { key: "library", label: "Biblioteca" },
+    { key: "analysis", label: "Análise" },
+    { key: "export", label: "Export" },
+  ] as const;
 
   useEffect(() => {
     void loadConfig();
@@ -26,9 +34,24 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <header className="flex items-center gap-3 border-b border-border px-3 py-2">
         <span className="text-sm font-semibold tracking-tight">Tracklistr</span>
-        <span className="text-xs text-muted-foreground">organização de biblioteca de DJ</span>
+        <div className="flex items-center gap-1">
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setMode(m.key)}
+              className={
+                "rounded-md px-3 py-1 text-sm transition-colors " +
+                (mode === m.key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground")
+              }
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </header>
       <Toolbar onOpenSettings={() => setSettingsOpen(true)} onOpenFind={() => setFindOpen(true)} />
       <main className="min-h-0 flex-1">

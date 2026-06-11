@@ -45,6 +45,7 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
   const cueBatchRunning = useLibraryStore((s) => s.cueBatchRunning);
   const cueBatchProgress = useLibraryStore((s) => s.cueBatchProgress);
   const cuesByRow = useLibraryStore((s) => s.cuesByRow);
+  const mode = useLibraryStore((s) => s.mode);
 
   const visible = useMemo(
     () => selectVisible(rows, filter, lens, analyze(rows)),
@@ -98,148 +99,146 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
           placeholder="Buscar (título, artista, álbum, gênero, arquivo)…"
           className="w-60"
         />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onOpenFind}
-          title="Localizar e substituir em massa numa coluna"
-        >
-          Loc/Subst
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => applyTitlePattern()}
-          title="Aplicar o padrão de nome (engrenagem) ao Título das faixas selecionadas (ou todas)"
-        >
-          Aplicar padrão
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={selection.size === 0}
-          onClick={() => {
-            const ids = new Set<string>();
-            for (const key of selection) {
-              const sep = key.indexOf("::");
-              if (sep > 0) ids.add(key.slice(0, sep));
-            }
-            if (window.confirm(`Renomear ${ids.size} arquivo(s) no disco para o Título?`)) {
-              void renameToTitle([...ids]);
-            }
-          }}
-          title="Renomear os arquivos das faixas selecionadas para o Título (no disco)"
-        >
-          Renomear arq.
-        </Button>
-
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={visible.length === 0}
-            onClick={() => downloadText("tracklist.csv", rowsToCsv(visible))}
-          >
-            CSV
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={visible.length === 0}
-            onClick={() => downloadText("tracklist.txt", rowsToTxt(visible))}
-          >
-            TXT
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={visible.length === 0}
-            onClick={exportCollectionXml}
-            title="Exportar a coleção visível como rekordbox.xml"
-          >
-            RB XML
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setSetlistOpen(true)}>
-            Setlist{setlistCount > 0 ? ` (${setlistCount})` : ""}
-          </Button>
-
-          <div className="mx-1 h-6 w-px bg-border" />
-
-          <span
-            className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
-            title="Provedor de IA ativo (altere na engrenagem)"
-          >
-            {provider === "ollama" ? "Ollama" : "Claude"}
-          </span>
-          <Button
-            variant="default"
-            size="sm"
-            disabled={aiRunning || selection.size === 0}
-            onClick={() => void runAi()}
-          >
-            {aiRunning && aiProgress ? `Autotag ${aiProgress.done}/${aiProgress.total}…` : "Autotag"}
-          </Button>
-
-          {pendingCount > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)}>
-              Revisar ({pendingCount})
+        {mode === "library" && (
+          <>
+            <Button variant="outline" size="sm" onClick={onOpenFind} title="Localizar e substituir em massa numa coluna">
+              Loc/Subst
             </Button>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={deepScanRunning || selection.size === 0}
-            onClick={() => void runDeepScan()}
-            title="Análise de áudio das faixas selecionadas (corte de frequência / fake 320)"
-          >
-            {deepScanRunning && deepScanProgress
-              ? `Deep Scan ${deepScanProgress.done}/${deepScanProgress.total}…`
-              : "Deep Scan"}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={audioDupRunning || rows.length < 2}
-            onClick={() => void runAudioDuplicates()}
-            title="Detectar duplicatas pelo áudio (fingerprint) — usa a seleção ou a biblioteca toda"
-          >
-            {audioDupRunning ? "Comparando…" : "Dup. áudio"}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={cueBatchRunning || selection.size === 0}
-            onClick={() => void detectCuesForSelection()}
-            title="Detectar cues/estrutura nas faixas selecionadas (para exportar como POSITION_MARK)"
-          >
-            {cueBatchRunning && cueBatchProgress
-              ? `Cues ${cueBatchProgress.done}/${cueBatchProgress.total}…`
-              : "Cues (sel.)"}
-          </Button>
-
-          <Button
-            variant="default"
-            size="sm"
-            className="bg-dirty text-black"
-            disabled={dirtyCount === 0 || writing}
-            onClick={() => setWriteConfirmOpen(true)}
-          >
-            {writing ? "Gravando…" : `Gravar (${dirtyCount})`}
-          </Button>
-
-          {lastWrite && (
             <Button
               variant="outline"
               size="sm"
-              disabled={writing}
-              onClick={() => void undoLastWrite()}
-              title="Restaura as tags da última gravação a partir do backup"
+              onClick={() => applyTitlePattern()}
+              title="Aplicar o padrão de nome (engrenagem) ao Título das faixas selecionadas (ou todas)"
             >
-              Desfazer
+              Aplicar padrão
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selection.size === 0}
+              onClick={() => {
+                const ids = new Set<string>();
+                for (const key of selection) {
+                  const sep = key.indexOf("::");
+                  if (sep > 0) ids.add(key.slice(0, sep));
+                }
+                if (window.confirm(`Renomear ${ids.size} arquivo(s) no disco para o Título?`)) {
+                  void renameToTitle([...ids]);
+                }
+              }}
+              title="Renomear os arquivos das faixas selecionadas para o Título (no disco)"
+            >
+              Renomear arq.
+            </Button>
+          </>
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* Library: AI tagging + write */}
+          {mode === "library" && (
+            <>
+              <span
+                className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                title="Provedor de IA ativo (altere na engrenagem)"
+              >
+                {provider === "ollama" ? "Ollama" : "Claude"}
+              </span>
+              <Button variant="default" size="sm" disabled={aiRunning || selection.size === 0} onClick={() => void runAi()}>
+                {aiRunning && aiProgress ? `Autotag ${aiProgress.done}/${aiProgress.total}…` : "Autotag"}
+              </Button>
+              {pendingCount > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)}>
+                  Revisar ({pendingCount})
+                </Button>
+              )}
+            </>
+          )}
+
+          {/* Analysis: audio analysis tools */}
+          {mode === "analysis" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deepScanRunning || selection.size === 0}
+                onClick={() => void runDeepScan()}
+                title="Análise de áudio das faixas selecionadas (corte de frequência / fake 320)"
+              >
+                {deepScanRunning && deepScanProgress
+                  ? `Deep Scan ${deepScanProgress.done}/${deepScanProgress.total}…`
+                  : "Deep Scan"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={audioDupRunning || rows.length < 2}
+                onClick={() => void runAudioDuplicates()}
+                title="Detectar duplicatas pelo áudio (fingerprint) — usa a seleção ou a biblioteca toda"
+              >
+                {audioDupRunning ? "Comparando…" : "Dup. áudio"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cueBatchRunning || selection.size === 0}
+                onClick={() => void detectCuesForSelection()}
+                title="Detectar cues/estrutura nas faixas selecionadas"
+              >
+                {cueBatchRunning && cueBatchProgress
+                  ? `Cues ${cueBatchProgress.done}/${cueBatchProgress.total}…`
+                  : "Cues (sel.)"}
+              </Button>
+            </>
+          )}
+
+          {/* Export: playlists / collection */}
+          {mode === "export" && (
+            <>
+              <Button variant="outline" size="sm" disabled={visible.length === 0} onClick={() => downloadText("tracklist.csv", rowsToCsv(visible))}>
+                CSV
+              </Button>
+              <Button variant="outline" size="sm" disabled={visible.length === 0} onClick={() => downloadText("tracklist.txt", rowsToTxt(visible))}>
+                TXT
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={visible.length === 0}
+                onClick={exportCollectionXml}
+                title="Exportar a coleção visível como rekordbox.xml"
+              >
+                RB XML
+              </Button>
+              <Button variant="default" size="sm" onClick={() => setSetlistOpen(true)}>
+                Setlist{setlistCount > 0 ? ` (${setlistCount})` : ""}
+              </Button>
+            </>
+          )}
+
+          {/* Write/undo available while editing (library + analysis) */}
+          {mode !== "export" && (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-dirty text-black"
+                disabled={dirtyCount === 0 || writing}
+                onClick={() => setWriteConfirmOpen(true)}
+              >
+                {writing ? "Gravando…" : `Gravar (${dirtyCount})`}
+              </Button>
+              {lastWrite && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={writing}
+                  onClick={() => void undoLastWrite()}
+                  title="Restaura as tags da última gravação a partir do backup"
+                >
+                  Desfazer
+                </Button>
+              )}
+            </>
           )}
 
           <div className="mx-1 h-6 w-px bg-border" />
