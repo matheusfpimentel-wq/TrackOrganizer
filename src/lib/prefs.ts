@@ -5,6 +5,25 @@ import type { Lens } from "@/lib/analysis";
 const COL_WIDTHS_KEY = "tracklistr.colWidths";
 const VIEW_KEY = "tracklistr.view";
 const TITLE_FORMAT_KEY = "tracklistr.titleFormat";
+const DENSITY_KEY = "tracklistr.density";
+
+export type Density = "compact" | "comfortable";
+
+export function loadDensity(): Density {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "comfortable" ? "comfortable" : "compact";
+  } catch {
+    return "compact";
+  }
+}
+
+export function saveDensity(d: Density): void {
+  try {
+    localStorage.setItem(DENSITY_KEY, d);
+  } catch {
+    // ignore
+  }
+}
 
 export const DEFAULT_TITLE_FORMAT = "[titulo] - [artista] ([versao])";
 

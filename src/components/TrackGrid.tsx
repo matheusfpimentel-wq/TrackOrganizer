@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 import { windowRange } from "@/lib/virtual";
-import { loadColWidths, saveColWidths } from "@/lib/prefs";
+import { loadColWidths, saveColWidths, loadDensity, saveDensity, type Density } from "@/lib/prefs";
 
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
@@ -43,6 +43,41 @@ const STATUS_COLOR: Record<TrackRow["status"], string> = {
   error: "bg-danger",
 };
 
+const NUMERIC_COLS: ReadonlySet<string> = new Set(
+  COLUMNS.filter((c) => c.type === "number").map((c) => c.key),
+);
+
+/**
+ * Match a cell value against a per-column filter expression. Numeric columns
+ * understand ranges ("120-130"), comparisons (">120", "<=128") and exact
+ * numbers; everything else is a case-insensitive substring match.
+ */
+function matchCol(value: string | number | null, expr: string, isNumber: boolean): boolean {
+  const q = expr.trim();
+  if (q === "") return true;
+  if (isNumber) {
+    const n = typeof value === "number" ? value : value === null ? null : Number(value);
+    const range = q.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      return n !== null && n >= Number(range[1]) && n <= Number(range[2]);
+    }
+    const cmp = q.match(/^(<=|>=|<|>|=)\s*(\d+)$/);
+    if (cmp) {
+      if (n === null) return false;
+      const t = Number(cmp[2]);
+      if (cmp[1] === "<") return n < t;
+      if (cmp[1] === "<=") return n <= t;
+      if (cmp[1] === ">") return n > t;
+      if (cmp[1] === ">=") return n >= t;
+      return n === t;
+    }
+    if (/^\d+$/.test(q)) {
+      return n !== null && String(n).includes(q);
+    }
+  }
+  return displayValue(value).toLowerCase().includes(q.toLowerCase());
+}
+
 export function TrackGrid() {
   const rows = useLibraryStore((s) => s.rows);
   const filter = useLibraryStore((s) => s.filter);
@@ -67,13 +102,34 @@ export function TrackGrid() {
   const artwork = useLibraryStore((s) => s.artwork);
   const loadArtwork = useLibraryStore((s) => s.loadArtwork);
   const genres = useLibraryStore((s) => s.config.genres);
+  const scan = useLibraryStore((s) => s.scan);
+  const importLibrary = useLibraryStore((s) => s.importLibrary);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
   const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
+  const [density, setDensity] = useState<Density>(() => loadDensity());
+  const [showColFilters, setShowColFilters] = useState(false);
+  // Per-column quick filters (key = TagKey or "fileName"); empty = no filter.
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  useEffect(() => {
+    saveDensity(density);
+  }, [density]);
+  const cellPad = density === "comfortable" ? "px-2 py-1.5" : "px-2 py-1";
+  const hasColFilters = Object.values(colFilters).some((v) => v.trim() !== "");
 
   const analysis = useMemo(() => analyze(rows), [rows]);
   const visible = useMemo(() => {
-    const base = selectVisible(rows, filter, lens, analysis);
+    let base = selectVisible(rows, filter, lens, analysis);
+    const active = Object.entries(colFilters).filter(([, v]) => v.trim() !== "");
+    if (active.length > 0) {
+      base = base.filter((row) =>
+        active.every(([key, expr]) =>
+          key === "fileName"
+            ? matchCol(row.fileName, expr, false)
+            : matchCol(row.edited[key as TagKey], expr, NUMERIC_COLS.has(key)),
+        ),
+      );
+    }
     if (!sort) {
       return base;
     }
@@ -91,7 +147,7 @@ export function TrackGrid() {
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
       return String(va).localeCompare(String(vb), "pt-BR") * dir;
     });
-  }, [rows, filter, lens, analysis, sort]);
+  }, [rows, filter, lens, analysis, sort, colFilters]);
 
   const toggleSort = useCallback((col: SortKey) => {
     setSort((cur) => {
@@ -547,23 +603,93 @@ export function TrackGrid() {
 
   if (rows.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Nenhuma faixa carregada. Use <span className="mx-1 font-medium text-foreground">Abrir pasta</span> para escanear.
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="text-5xl text-muted-foreground/40">♪</div>
+        <div>
+          <p className="text-base font-medium text-foreground">Nenhuma faixa carregada</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Escaneie uma pasta de músicas ou importe uma coleção/playlist para começar.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => void scan(false)}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:brightness-110"
+          >
+            Abrir pasta
+          </button>
+          <button
+            onClick={() => void scan(true)}
+            className="rounded-md border border-border px-4 py-2 text-sm transition-colors hover:bg-accent"
+          >
+            Abrir pasta + subpastas
+          </button>
+          <button
+            onClick={() => void importLibrary()}
+            className="rounded-md border border-border px-4 py-2 text-sm transition-colors hover:bg-accent"
+          >
+            Importar coleção / playlist
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground/70">
+          Dica: pressione <kbd className="rounded bg-muted px-1 py-0.5">Ctrl K</kbd> para a paleta de comandos.
+        </p>
       </div>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      tabIndex={0}
-      onKeyDown={onGridKeyDown}
-      onScroll={(e) => {
-        setScrollTop(e.currentTarget.scrollTop);
-        setViewportH(e.currentTarget.clientHeight);
-      }}
-      className="h-full overflow-auto outline-none"
-    >
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
+        <span className="text-muted-foreground">
+          {visible.length} de {rows.length}
+        </span>
+        <button
+          onClick={() => setShowColFilters((v) => !v)}
+          className={cn(
+            "rounded border px-2 py-0.5 transition-colors",
+            showColFilters || hasColFilters
+              ? "border-primary bg-primary/15 text-foreground"
+              : "border-border text-muted-foreground hover:bg-accent",
+          )}
+          title="Filtros por coluna (faixa de BPM, gênero, tom, …)"
+        >
+          Filtros por coluna{hasColFilters ? " (ativos)" : ""}
+        </button>
+        {hasColFilters && (
+          <button
+            onClick={() => setColFilters({})}
+            className="text-muted-foreground underline hover:text-foreground"
+          >
+            limpar
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-1 text-muted-foreground">
+          <span>Densidade</span>
+          {(["compact", "comfortable"] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDensity(d)}
+              className={cn(
+                "rounded px-1.5 py-0.5 transition-colors",
+                density === d ? "bg-accent text-foreground ring-1 ring-border" : "hover:bg-accent",
+              )}
+            >
+              {d === "compact" ? "Compacta" : "Confortável"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div
+        ref={containerRef}
+        tabIndex={0}
+        onKeyDown={onGridKeyDown}
+        onScroll={(e) => {
+          setScrollTop(e.currentTarget.scrollTop);
+          setViewportH(e.currentTarget.clientHeight);
+        }}
+        className="min-h-0 flex-1 overflow-auto outline-none"
+      >
       <table className="w-max select-none border-collapse text-sm">
         <thead className="sticky top-0 z-10 bg-muted">
           <tr>
@@ -609,6 +735,31 @@ export function TrackGrid() {
               {sort?.col === "fileName" && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
             </th>
           </tr>
+          {showColFilters && (
+            <tr>
+              <th className="sticky left-0 z-20 border border-border bg-muted/70 p-0.5" />
+              <th className="border border-border bg-muted/70 p-0.5" />
+              {COLUMNS.map((col) => (
+                <th key={col.key} className="border border-border bg-muted/70 p-0.5">
+                  <input
+                    value={colFilters[col.key] ?? ""}
+                    onChange={(e) => setColFilters((f) => ({ ...f, [col.key]: e.target.value }))}
+                    placeholder={col.type === "number" ? "ex. 120-130" : "filtrar…"}
+                    className="w-full rounded bg-background px-1 py-0.5 text-xs font-normal text-foreground outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </th>
+              ))}
+              <th className="border border-border bg-muted/70 p-0.5" />
+              <th className="border border-border bg-muted/70 p-0.5">
+                <input
+                  value={colFilters.fileName ?? ""}
+                  onChange={(e) => setColFilters((f) => ({ ...f, fileName: e.target.value }))}
+                  placeholder="filtrar…"
+                  className="w-full rounded bg-background px-1 py-0.5 text-xs font-normal text-foreground outline-none focus:ring-1 focus:ring-primary"
+                />
+              </th>
+            </tr>
+          )}
         </thead>
         <tbody>
           {win.topPad > 0 && (
@@ -628,7 +779,7 @@ export function TrackGrid() {
             <tr
               key={row.id}
               ref={localIdx === 0 ? measureRow : undefined}
-              className="hover:bg-muted/30"
+              className={cn("hover:bg-muted/30", rowIdx % 2 === 1 && "bg-muted/15")}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setMenu({ x: e.clientX, y: e.clientY, row });
@@ -683,7 +834,8 @@ export function TrackGrid() {
                     onMouseEnter={() => onCellMouseEnter(row.id, col.key)}
                     onDoubleClick={() => beginEdit(row, col.key)}
                     className={cn(
-                      "border border-border px-2 py-1 align-middle",
+                      "border border-border align-middle",
+                      cellPad,
                       col.type === "number" ? "text-right tabular-nums" : "text-left",
                       pending && !isEditing && "group relative",
                       selected && "bg-primary/25 ring-1 ring-inset ring-primary",
@@ -760,11 +912,11 @@ export function TrackGrid() {
                   </td>
                 );
               })}
-              <td className="border border-border px-2 py-1 text-right tabular-nums text-muted-foreground">
+              <td className={cn("border border-border text-right tabular-nums text-muted-foreground", cellPad)}>
                 {formatDuration(row.durationSecs)}
               </td>
               <td
-                className="border border-border px-2 py-1 text-left text-muted-foreground"
+                className={cn("border border-border text-left text-muted-foreground", cellPad)}
                 title={row.filePath}
               >
                 <span className="block max-w-[420px] truncate">{row.fileName}</span>
@@ -779,6 +931,7 @@ export function TrackGrid() {
           )}
         </tbody>
       </table>
+      </div>
 
       {genres.length > 0 && (
         <datalist id="genre-bank">
