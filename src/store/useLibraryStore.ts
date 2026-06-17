@@ -117,6 +117,8 @@ interface LibraryState {
   setFilter: (value: string) => void;
   setLens: (lens: Lens) => void;
   setCell: (rowId: string, key: TagKey, raw: string) => void;
+  /** Apply many cell writes (rowId+col+value) in a single undo step. */
+  setCells: (updates: { rowId: string; key: TagKey; raw: string }[]) => void;
   clearCells: (keys: Iterable<string>) => void;
   resetRow: (rowId: string) => void;
   /** Configurable title naming template (e.g. "[titulo] - [artista] ([versao])"). */
@@ -459,6 +461,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           return row;
         }
         const edited: TrackTags = { ...row.edited, [key]: coerce(key, raw) };
+        return { ...row, edited, status: statusFor({ ...row, edited }) };
+      }),
+    }));
+  },
+
+  setCells: (updates) => {
+    if (updates.length === 0) {
+      return;
+    }
+    const byRow = new Map<string, { key: TagKey; raw: string }[]>();
+    for (const u of updates) {
+      const list = byRow.get(u.rowId) ?? [];
+      list.push({ key: u.key, raw: u.raw });
+      byRow.set(u.rowId, list);
+    }
+    set((state) => ({
+      ...historyPatch(state),
+      rows: state.rows.map((row) => {
+        const ups = byRow.get(row.id);
+        if (!ups) {
+          return row;
+        }
+        let edited: TrackTags = { ...row.edited };
+        for (const { key, raw } of ups) {
+          edited = { ...edited, [key]: coerce(key, raw) };
+        }
         return { ...row, edited, status: statusFor({ ...row, edited }) };
       }),
     }));

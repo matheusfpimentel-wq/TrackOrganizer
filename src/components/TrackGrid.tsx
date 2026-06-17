@@ -14,7 +14,9 @@ import { loadColWidths, saveColWidths } from "@/lib/prefs";
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
 );
-import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
+import { AI_FIELDS, COLUMNS, type AiField, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
+
+const AI_FIELD_KEYS: ReadonlySet<string> = new Set<string>(AI_FIELDS);
 import { camelotColor, displayValue, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
 import { revealInFiles } from "@/lib/api";
@@ -50,7 +52,10 @@ export function TrackGrid() {
   const setSelection = useLibraryStore((s) => s.setSelection);
   const setAnchor = useLibraryStore((s) => s.setAnchor);
   const setCell = useLibraryStore((s) => s.setCell);
+  const setCells = useLibraryStore((s) => s.setCells);
   const clearCells = useLibraryStore((s) => s.clearCells);
+  const applySuggestion = useLibraryStore((s) => s.applySuggestion);
+  const rejectSuggestion = useLibraryStore((s) => s.rejectSuggestion);
   const resetRow = useLibraryStore((s) => s.resetRow);
   const addToSetlist = useLibraryStore((s) => s.addToSetlist);
   const detectCues = useLibraryStore((s) => s.detectCues);
@@ -348,6 +353,50 @@ export function TrackGrid() {
     });
   }, [anchor, selection, visible, rowIndexById, colIndexByKey, setCell]);
 
+  // Excel-style fill-down: the top row of the selection rectangle seeds the
+  // cells below it (per column), applied as one undo step.
+  const fillDown = useCallback(() => {
+    if (selection.size === 0) return;
+    let minR = Infinity;
+    let maxR = -1;
+    let minC = Infinity;
+    let maxC = -1;
+    for (const key of selection) {
+      const sep = key.indexOf("::");
+      const r = rowIndexById.get(key.slice(0, sep));
+      const c = colIndexByKey.get(key.slice(sep + 2) as TagKey);
+      if (r === undefined || c === undefined) continue;
+      minR = Math.min(minR, r);
+      maxR = Math.max(maxR, r);
+      minC = Math.min(minC, c);
+      maxC = Math.max(maxC, c);
+    }
+    if (maxR < 0 || maxR === minR) return; // need at least two rows
+    const updates: { rowId: string; key: TagKey; raw: string }[] = [];
+    for (let c = minC; c <= maxC; c++) {
+      const col = COLUMNS[c];
+      const src = visible[minR];
+      if (!col || !src) continue;
+      const val = displayValue(src.edited[col.key]);
+      for (let r = minR + 1; r <= maxR; r++) {
+        const row = visible[r];
+        if (row) updates.push({ rowId: row.id, key: col.key, raw: val });
+      }
+    }
+    setCells(updates);
+  }, [selection, visible, rowIndexById, colIndexByKey, setCells]);
+
+  const selectAllVisible = useCallback(() => {
+    const keys = new Set<string>();
+    for (const row of visible) {
+      for (const col of COLUMNS) keys.add(cellKey(row.id, col.key));
+    }
+    setSelection(keys);
+    const first = visible[0];
+    const firstCol = COLUMNS[0];
+    setAnchor(first && firstCol ? { rowId: first.id, colKey: firstCol.key } : null);
+  }, [visible, setSelection, setAnchor]);
+
   const onInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
@@ -362,12 +411,28 @@ export function TrackGrid() {
             setAnchor({ rowId: next.id, colKey: editing.colKey });
           }
         }
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        commitEdit();
+        // Commit and step to the next/previous column (Excel-style).
+        if (editing) {
+          const r = rowIndexById.get(editing.rowId);
+          const c = colIndexByKey.get(editing.colKey);
+          if (r !== undefined && c !== undefined) {
+            const col = COLUMNS[e.shiftKey ? c - 1 : c + 1];
+            const row = visible[r];
+            if (col && row) {
+              setSelection(new Set([cellKey(row.id, col.key)]));
+              setAnchor({ rowId: row.id, colKey: col.key });
+            }
+          }
+        }
       } else if (e.key === "Escape") {
         e.preventDefault();
         setEditing(null);
       }
     },
-    [commitEdit, editing, rowIndexById, setAnchor, setSelection, visible],
+    [commitEdit, editing, colIndexByKey, rowIndexById, setAnchor, setSelection, visible],
   );
 
   const moveActive = useCallback(
@@ -420,6 +485,16 @@ export function TrackGrid() {
           void pasteClipboard();
           return;
         }
+        if (k === "d") {
+          e.preventDefault();
+          fillDown();
+          return;
+        }
+        if (k === "a") {
+          e.preventDefault();
+          selectAllVisible();
+          return;
+        }
       }
       switch (e.key) {
         case "Delete":
@@ -467,7 +542,7 @@ export function TrackGrid() {
           }
       }
     },
-    [anchor, beginEdit, clearCells, copySelection, editing, moveActive, pasteClipboard, redoEdit, rowIndexById, selection, undoEdit, visible],
+    [anchor, beginEdit, clearCells, copySelection, editing, fillDown, moveActive, pasteClipboard, redoEdit, rowIndexById, selectAllVisible, selection, undoEdit, visible],
   );
 
   if (rows.length === 0) {
@@ -610,6 +685,7 @@ export function TrackGrid() {
                     className={cn(
                       "border border-border px-2 py-1 align-middle",
                       col.type === "number" ? "text-right tabular-nums" : "text-left",
+                      pending && !isEditing && "group relative",
                       selected && "bg-primary/25 ring-1 ring-inset ring-primary",
                       pending && !selected && "bg-suggested/15 ring-1 ring-inset ring-suggested",
                       dirty && !selected && !pending && !keyColor && "bg-dirty/10",
@@ -651,6 +727,34 @@ export function TrackGrid() {
                     ) : (
                       <span className={cn("block truncate", dirty && "text-dirty")}>
                         {displayValue(value)}
+                      </span>
+                    )}
+                    {pending && !isEditing && AI_FIELD_KEYS.has(col.key) && (
+                      <span className="absolute right-0.5 top-1/2 z-10 hidden -translate-y-1/2 gap-0.5 group-hover:flex">
+                        <button
+                          aria-label="Aceitar sugestão da IA"
+                          title={`Aceitar: ${displayValue(row.suggested?.[col.key] ?? null)}`}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            applySuggestion(row.id, col.key as AiField);
+                          }}
+                          className="rounded bg-suggested px-1 text-[10px] font-bold leading-tight text-black hover:brightness-110"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          aria-label="Rejeitar sugestão da IA"
+                          title="Rejeitar sugestão"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            rejectSuggestion(row.id, col.key as AiField);
+                          }}
+                          className="rounded bg-danger px-1 text-[10px] font-bold leading-tight text-white hover:brightness-110"
+                        >
+                          ✗
+                        </button>
                       </span>
                     )}
                   </td>
