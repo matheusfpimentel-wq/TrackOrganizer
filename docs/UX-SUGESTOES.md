@@ -3,6 +3,23 @@
 Revisão do estado atual (core + IA + análise + setlist/import-export) com sugestões
 priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · 🔴 grande.
 
+## ✅ Implementado (leva edição/biblioteca/cliques/estética)
+- **Edição rápida**: `Ctrl+D` (preencher pra baixo), `Tab`/`Shift+Tab` confirmam e
+  avançam, `Ctrl+A` seleciona tudo que está visível, e botões ✓/✗ inline nas células
+  com sugestão da IA (aceitar/rejeitar sem abrir o Revisar). Ação `setCells` no store
+  aplica lotes em 1 passo de undo.
+- **Menos cliques**: **Command palette** (`Ctrl+K`) com busca difusa de ações; atalhos
+  globais `Ctrl+S` (gravar) e `/` (focar busca); botão "Comandos" no cabeçalho.
+- **Bibliotecas grandes**: **filtros por coluna** (toggle) — numéricos entendem faixa
+  (`120-130`), comparação (`>120`, `<=128`) e número; texto é substring. Contador "N de M".
+- **Estética**: densidade **Compacta/Confortável** (persistida), **zebra striping**,
+  **empty state** com ações e dica do `Ctrl+K`, barra de controles acima da grade.
+
+### Pendentes desta leva (próximos PRs)
+- Barra de ação contextual flutuante na seleção (eixo "menos cliques").
+- Views salvas / Smart Crates + agrupar por (eixo "bibliotecas grandes").
+- Toasts unificados, dashboard de saúde da biblioteca, resolver duplicatas (eixo "estética/funções").
+
 ## ✅ Implementado (leva UX quick-wins)
 - Duração da faixa + **tempo total do set** (item 3)
 - **Camelot/key colorido** na coluna Tom (item 2 — parte visual; ordenação ainda pendente)
