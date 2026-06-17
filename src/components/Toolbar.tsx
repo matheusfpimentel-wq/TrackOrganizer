@@ -94,9 +94,10 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
         <div className="mx-1 h-6 w-px bg-border" />
 
         <Input
+          id="library-filter"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Buscar (título, artista, álbum, gênero, arquivo)…"
+          placeholder="Buscar (título, artista, álbum, gênero, arquivo)… ( / )"
           className="w-60"
         />
         {mode === "library" && (

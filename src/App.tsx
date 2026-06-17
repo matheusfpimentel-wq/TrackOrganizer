@@ -11,14 +11,17 @@ import { AudioDupPanel } from "@/components/AudioDupPanel";
 import { CuePanel } from "@/components/CuePanel";
 import { PlayerBar } from "@/components/PlayerBar";
 import { FindReplace } from "@/components/FindReplace";
+import { CommandPalette } from "@/components/CommandPalette";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const loadConfig = useLibraryStore((s) => s.loadConfig);
   const writeResult = useLibraryStore((s) => s.writeResult);
   const clearWriteResult = useLibraryStore((s) => s.clearWriteResult);
+  const setWriteConfirmOpen = useLibraryStore((s) => s.setWriteConfirmOpen);
   const mode = useLibraryStore((s) => s.mode);
   const setMode = useLibraryStore((s) => s.setMode);
 
@@ -31,6 +34,32 @@ export default function App() {
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
+
+  // Global shortcuts: Ctrl/Cmd+K (command palette), Ctrl/Cmd+S (write),
+  // "/" (focus the library search box).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const typing = tag === "INPUT" || tag === "TEXTAREA";
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        setWriteConfirmOpen(true);
+      } else if (e.key === "/" && !typing && !mod && !e.altKey) {
+        const el = document.getElementById("library-filter") as HTMLInputElement | null;
+        if (el) {
+          e.preventDefault();
+          el.focus();
+          el.select();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setWriteConfirmOpen]);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -52,6 +81,14 @@ export default function App() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="ml-auto flex items-center gap-2 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="Paleta de comandos"
+        >
+          <span>Comandos</span>
+          <kbd className="rounded bg-muted px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
+        </button>
       </header>
       <Toolbar onOpenSettings={() => setSettingsOpen(true)} onOpenFind={() => setFindOpen(true)} />
       <main className="min-h-0 flex-1">
@@ -62,6 +99,12 @@ export default function App() {
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <FindReplace open={findOpen} onClose={() => setFindOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenFind={() => setFindOpen(true)}
+      />
       <DiffReview />
       <SetlistPanel />
       <WriteConfirm />
