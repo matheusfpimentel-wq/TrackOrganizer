@@ -22,8 +22,8 @@ priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · �
 - **Dashboard de saúde** da biblioteca (+ lentes "sem capa" e "sem BPM").
 - **Resolver duplicatas**: marca a melhor de cada grupo e seleciona as outras.
 
-### Ainda pendente
-- **Agrupar por** (genre/Tom/BPM) com grupos recolhíveis.
+- **Agrupar por** (gênero/Tom/faixa de BPM) com grupos recolhíveis na própria grade
+  (virtualização preservada; recolher/expandir todos).
 
 ## ✅ Implementado (leva UX quick-wins)
 - Duração da faixa + **tempo total do set** (item 3)

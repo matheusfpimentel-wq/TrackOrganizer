@@ -44,6 +44,10 @@ interface ContextMenu {
 
 type SortKey = TagKey | "duration" | "fileName";
 
+type GridItem =
+  | { type: "row"; row: TrackRow; seq: number }
+  | { type: "header"; gkey: string; label: string; count: number; collapsed: boolean };
+
 const STATUS_COLOR: Record<TrackRow["status"], string> = {
   pristine: "bg-transparent",
   pending_approval: "bg-suggested",
@@ -87,6 +91,24 @@ function matchCol(value: string | number | null, expr: string, isNumber: boolean
   return displayValue(value).toLowerCase().includes(q.toLowerCase());
 }
 
+type GroupBy = "none" | "genre" | "key" | "bpm";
+
+/** Group key (for sorting/collapse) + human label for a row under `by`. */
+function groupOf(row: TrackRow, by: GroupBy): { key: string; label: string } {
+  if (by === "genre") {
+    const g = row.edited.genre.trim();
+    return g ? { key: g.toLowerCase(), label: g } : { key: "~", label: "(sem gênero)" };
+  }
+  if (by === "key") {
+    const k = row.edited.key.trim();
+    return k ? { key: k.toLowerCase(), label: k } : { key: "~", label: "(sem tom)" };
+  }
+  const bpm = row.edited.bpm;
+  if (bpm === null) return { key: "~", label: "(sem BPM)" };
+  const lo = Math.floor(bpm / 10) * 10;
+  return { key: String(lo).padStart(4, "0"), label: `${lo}–${lo + 9} BPM` };
+}
+
 export function TrackGrid() {
   const rows = useLibraryStore((s) => s.rows);
   const filter = useLibraryStore((s) => s.filter);
@@ -125,6 +147,8 @@ export function TrackGrid() {
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
   const [showViews, setShowViews] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   useEffect(() => {
     saveDensity(density);
   }, [density]);
@@ -197,6 +221,55 @@ export function TrackGrid() {
     });
   }, [rows, filter, lens, analysis, sort, colFilters]);
 
+  // Flattened render list: when grouping is on, group headers are interleaved
+  // with their rows (collapsed groups contribute only a header). This keeps the
+  // table a single uniform list so virtualization still works.
+  const items = useMemo<GridItem[]>(() => {
+    if (groupBy === "none") {
+      return visible.map((row, i) => ({ type: "row", row, seq: i + 1 }));
+    }
+    const order: string[] = [];
+    const map = new Map<string, { label: string; rows: TrackRow[] }>();
+    for (const row of visible) {
+      const { key, label } = groupOf(row, groupBy);
+      let g = map.get(key);
+      if (!g) {
+        g = { label, rows: [] };
+        map.set(key, g);
+        order.push(key);
+      }
+      g.rows.push(row);
+    }
+    order.sort((a, b) => {
+      if (a === "~") return 1;
+      if (b === "~") return -1;
+      return a.localeCompare(b, "pt-BR", { numeric: true });
+    });
+    const out: GridItem[] = [];
+    let seq = 0;
+    for (const key of order) {
+      const g = map.get(key)!;
+      const collapsed = collapsedGroups.has(key);
+      out.push({ type: "header", gkey: key, label: g.label, count: g.rows.length, collapsed });
+      if (!collapsed) {
+        for (const row of g.rows) {
+          seq += 1;
+          out.push({ type: "row", row, seq });
+        }
+      }
+    }
+    return out;
+  }, [visible, groupBy, collapsedGroups]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   const toggleSort = useCallback((col: SortKey) => {
     setSort((cur) => {
       if (!cur || cur.col !== col) return { col, dir: "asc" };
@@ -252,10 +325,10 @@ export function TrackGrid() {
       setViewportH(containerRef.current.clientHeight);
     }
   }, [rows.length]);
-  const virtualize = visible.length > VIRT_THRESHOLD;
+  const virtualize = items.length > VIRT_THRESHOLD;
   const win = virtualize
-    ? windowRange(scrollTop, viewportH, rowH, visible.length)
-    : { start: 0, end: visible.length, topPad: 0, bottomPad: 0 };
+    ? windowRange(scrollTop, viewportH, rowH, items.length)
+    : { start: 0, end: items.length, topPad: 0, bottomPad: 0 };
   const colCount = COLUMNS.length + 4;
   const measureRow = (el: HTMLTableRowElement | null) => {
     if (el) {
@@ -268,12 +341,15 @@ export function TrackGrid() {
 
   // Lazily load cover art for the rows currently in view.
   useEffect(() => {
-    for (const row of visible.slice(win.start, win.end)) {
-      if (row.hasArtwork && !(row.id in artwork)) {
-        void loadArtwork(row.id);
+    for (const item of items.slice(win.start, win.end)) {
+      if (item.type === "row" && item.row.hasArtwork && !(item.row.id in artwork)) {
+        void loadArtwork(item.row.id);
       }
     }
-  }, [visible, win.start, win.end, artwork, loadArtwork]);
+  }, [items, win.start, win.end, artwork, loadArtwork]);
+
+  const windowItems = items.slice(win.start, win.end);
+  const firstRowLocal = windowItems.findIndex((it) => it.type === "row");
 
   const rowIndexById = useMemo(() => {
     const m = new Map<string, number>();
@@ -756,6 +832,40 @@ export function TrackGrid() {
             </>
           )}
         </div>
+        <select
+          value={groupBy}
+          onChange={(e) => {
+            setGroupBy(e.target.value as GroupBy);
+            setCollapsedGroups(new Set());
+          }}
+          className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground"
+          title="Agrupar a grade"
+        >
+          <option value="none">Sem agrupar</option>
+          <option value="genre">Agrupar: Gênero</option>
+          <option value="key">Agrupar: Tom</option>
+          <option value="bpm">Agrupar: BPM</option>
+        </select>
+        {groupBy !== "none" && (
+          <>
+            <button
+              onClick={() =>
+                setCollapsedGroups(
+                  new Set(items.filter((i) => i.type === "header").map((i) => (i as { gkey: string }).gkey)),
+                )
+              }
+              className="text-muted-foreground underline hover:text-foreground"
+            >
+              recolher
+            </button>
+            <button
+              onClick={() => setCollapsedGroups(new Set())}
+              className="text-muted-foreground underline hover:text-foreground"
+            >
+              expandir
+            </button>
+          </>
+        )}
         <button
           onClick={() => setHealthOpen(true)}
           className="rounded border border-border px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
@@ -866,8 +976,25 @@ export function TrackGrid() {
               <td colSpan={colCount} style={{ height: win.topPad, padding: 0, border: 0 }} />
             </tr>
           )}
-          {visible.slice(win.start, win.end).map((row, localIdx) => {
-            const rowIdx = win.start + localIdx;
+          {windowItems.map((item, localIdx) => {
+            if (item.type === "header") {
+              return (
+                <tr key={`h-${item.gkey}`} className="bg-muted/70">
+                  <td colSpan={colCount} className="border border-border p-0">
+                    <button
+                      onClick={() => toggleGroup(item.gkey)}
+                      className="sticky left-0 flex items-center gap-2 px-2 py-1.5 text-left text-xs font-medium text-foreground"
+                    >
+                      <span className="text-muted-foreground">{item.collapsed ? "▸" : "▾"}</span>
+                      <span>{item.label}</span>
+                      <span className="text-muted-foreground">({item.count})</span>
+                    </button>
+                  </td>
+                </tr>
+              );
+            }
+            const row = item.row;
+            const rowIdx = item.seq - 1;
             const isDup = analysis.duplicates.has(row.id);
             const issues = analysis.issues.get(row.id);
             const rowTitle =
@@ -877,7 +1004,7 @@ export function TrackGrid() {
             return (
             <tr
               key={row.id}
-              ref={localIdx === 0 ? measureRow : undefined}
+              ref={localIdx === firstRowLocal ? measureRow : undefined}
               className={cn("hover:bg-muted/30", rowIdx % 2 === 1 && "bg-muted/15")}
               onContextMenu={(e) => {
                 e.preventDefault();
