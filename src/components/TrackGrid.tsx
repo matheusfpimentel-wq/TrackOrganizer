@@ -9,7 +9,16 @@ import {
   type MouseEvent,
 } from "react";
 import { windowRange } from "@/lib/virtual";
-import { loadColWidths, saveColWidths, loadDensity, saveDensity, type Density } from "@/lib/prefs";
+import {
+  loadColWidths,
+  saveColWidths,
+  loadDensity,
+  saveDensity,
+  loadSavedViews,
+  saveSavedViews,
+  type Density,
+  type SavedView,
+} from "@/lib/prefs";
 
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
@@ -81,7 +90,9 @@ function matchCol(value: string | number | null, expr: string, isNumber: boolean
 export function TrackGrid() {
   const rows = useLibraryStore((s) => s.rows);
   const filter = useLibraryStore((s) => s.filter);
+  const setFilter = useLibraryStore((s) => s.setFilter);
   const lens = useLibraryStore((s) => s.lens);
+  const setLens = useLibraryStore((s) => s.setLens);
   const selection = useLibraryStore((s) => s.selection);
   const anchor = useLibraryStore((s) => s.anchor);
   const setSelection = useLibraryStore((s) => s.setSelection);
@@ -111,9 +122,45 @@ export function TrackGrid() {
   const [showColFilters, setShowColFilters] = useState(false);
   // Per-column quick filters (key = TagKey or "fileName"); empty = no filter.
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
+  const [showViews, setShowViews] = useState(false);
   useEffect(() => {
     saveDensity(density);
   }, [density]);
+
+  const saveCurrentView = useCallback(() => {
+    const name = window.prompt("Nome da view (Smart Crate):")?.trim();
+    if (!name) return;
+    const view: SavedView = { name, filter, lens, sort, colFilters };
+    setSavedViews((prev) => {
+      const next = [...prev.filter((v) => v.name !== name), view];
+      saveSavedViews(next);
+      return next;
+    });
+    setShowViews(false);
+  }, [filter, lens, sort, colFilters]);
+
+  const applyView = useCallback(
+    (v: SavedView) => {
+      setFilter(v.filter);
+      if (lens !== v.lens) setLens(v.lens);
+      setSort(v.sort as { col: SortKey; dir: "asc" | "desc" } | null);
+      setColFilters(v.colFilters ?? {});
+      if (v.colFilters && Object.values(v.colFilters).some((x) => x.trim() !== "")) {
+        setShowColFilters(true);
+      }
+      setShowViews(false);
+    },
+    [setFilter, setLens, lens],
+  );
+
+  const deleteView = useCallback((name: string) => {
+    setSavedViews((prev) => {
+      const next = prev.filter((v) => v.name !== name);
+      saveSavedViews(next);
+      return next;
+    });
+  }, []);
   const cellPad = density === "comfortable" ? "px-2 py-1.5" : "px-2 py-1";
   const hasColFilters = Object.values(colFilters).some((v) => v.trim() !== "");
 
@@ -664,6 +711,50 @@ export function TrackGrid() {
             limpar
           </button>
         )}
+        <div className="relative">
+          <button
+            onClick={() => setShowViews((v) => !v)}
+            className="rounded border border-border px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
+            title="Views salvas (Smart Crates)"
+          >
+            Views ▾
+          </button>
+          {showViews && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowViews(false)} />
+              <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-border bg-background py-1 shadow-xl">
+                <button
+                  onClick={saveCurrentView}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-accent"
+                >
+                  ＋ Salvar view atual…
+                </button>
+                {savedViews.length > 0 && <div className="my-1 h-px bg-border" />}
+                {savedViews.length === 0 ? (
+                  <div className="px-3 py-1.5 text-xs text-muted-foreground">Nenhuma view salva.</div>
+                ) : (
+                  savedViews.map((v) => (
+                    <div key={v.name} className="flex items-center justify-between px-1">
+                      <button
+                        onClick={() => applyView(v)}
+                        className="flex-1 truncate rounded px-2 py-1 text-left text-xs hover:bg-accent"
+                      >
+                        {v.name}
+                      </button>
+                      <button
+                        onClick={() => deleteView(v.name)}
+                        aria-label={`Excluir view ${v.name}`}
+                        className="px-1.5 text-xs text-muted-foreground hover:text-danger"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
         <div className="ml-auto flex items-center gap-1 text-muted-foreground">
           <span>Densidade</span>
           {(["compact", "comfortable"] as const).map((d) => (

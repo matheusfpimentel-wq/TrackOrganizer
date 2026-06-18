@@ -12,6 +12,7 @@ import { CuePanel } from "@/components/CuePanel";
 import { PlayerBar } from "@/components/PlayerBar";
 import { FindReplace } from "@/components/FindReplace";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SelectionBar } from "@/components/SelectionBar";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -94,6 +95,7 @@ export default function App() {
       <main className="min-h-0 flex-1">
         <TrackGrid />
       </main>
+      <SelectionBar />
       <PlayerBar />
       <StatusBar />
 
