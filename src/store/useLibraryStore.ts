@@ -30,10 +30,14 @@ const AI_CHUNK = 20;
 /** Top-level UI mode. */
 export type AppMode = "library" | "analysis" | "export";
 
-interface WriteSummary {
-  ok: number;
-  failed: number;
-  backupPath: string;
+let toastSeq = 0;
+
+/** Transient notification shown in the corner (success / error / info). */
+export interface Toast {
+  id: number;
+  kind: "success" | "error" | "info";
+  message: string;
+  detail?: string;
 }
 
 interface LastWrite {
@@ -71,7 +75,8 @@ interface LibraryState {
   reviewOpen: boolean;
 
   writing: boolean;
-  writeResult: WriteSummary | null;
+  /** Transient corner notifications. */
+  toasts: Toast[];
   lastWrite: LastWrite | null;
   writeConfirmOpen: boolean;
 
@@ -148,7 +153,8 @@ interface LibraryState {
 
   writeApproved: () => Promise<void>;
   undoLastWrite: () => Promise<void>;
-  clearWriteResult: () => void;
+  pushToast: (toast: Omit<Toast, "id">) => void;
+  dismissToast: (id: number) => void;
   setWriteConfirmOpen: (open: boolean) => void;
 
   setSetlistOpen: (open: boolean) => void;
@@ -333,7 +339,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   reviewOpen: false,
 
   writing: false,
-  writeResult: null,
+  toasts: [],
   lastWrite: null,
   writeConfirmOpen: false,
 
@@ -614,7 +620,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ globalError: "Selecione faixas com título para renomear." });
       return;
     }
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     let ok = 0;
     let failed = 0;
     for (const row of targets) {
@@ -630,7 +636,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         failed += 1;
       }
     }
-    set({ writing: false, writeResult: { ok, failed, backupPath: "renomeação no disco" } });
+    set({ writing: false });
+    get().pushToast({
+      kind: failed > 0 ? "error" : "success",
+      message: `Renomeado: ${ok} ok${failed > 0 ? `, ${failed} falhou` : ""}`,
+    });
   },
 
   setSelection: (keys) => set({ selection: keys }),
@@ -792,12 +802,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     // Pre-write tags (== current originals) let us restore the UI on undo.
     const snapshot = dirty.map((r) => ({ filePath: r.filePath, tags: { ...r.original } }));
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     try {
       const outcome = await api.writeTags(
         dirty.map((r) => ({ filePath: r.filePath, tags: r.edited })),
       );
       const okPaths = new Set(outcome.results.filter((x) => x.ok).map((x) => x.filePath));
+      const okCount = outcome.results.filter((x) => x.ok).length;
+      const failedCount = outcome.results.filter((x) => !x.ok).length;
       set((state) => ({
         writing: false,
         rows: state.rows.map((row) =>
@@ -805,13 +817,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             ? { ...row, original: { ...row.edited }, status: "pristine" }
             : row,
         ),
-        writeResult: {
-          ok: outcome.results.filter((x) => x.ok).length,
-          failed: outcome.results.filter((x) => !x.ok).length,
-          backupPath: outcome.backupPath,
-        },
         lastWrite: { backupPath: outcome.backupPath, snapshot },
       }));
+      get().pushToast({
+        kind: failedCount > 0 ? "error" : "success",
+        message: `Gravado: ${okCount} ok${failedCount > 0 ? `, ${failedCount} falhou` : ""}`,
+        detail: `backup: ${outcome.backupPath}`,
+      });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }
@@ -836,14 +848,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
           return { ...row, original: { ...tags }, edited: { ...tags }, suggested: null, status: "pristine" };
         }),
-        writeResult: { ok: last.snapshot.length, failed: 0, backupPath: last.backupPath },
       }));
+      get().pushToast({
+        kind: "success",
+        message: `Desfeito: ${last.snapshot.length} faixa(s) restaurada(s)`,
+      });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }
   },
 
-  clearWriteResult: () => set({ writeResult: null }),
+  pushToast: (toast) => {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }));
+  },
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setWriteConfirmOpen: (open) => set({ writeConfirmOpen: open }),
 
   setSetlistOpen: (open) => set({ setlistOpen: open }),
@@ -1035,7 +1054,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!row) {
       return;
     }
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     try {
       let cues = cuesByRow[rowId];
       if (!cues) {
@@ -1044,7 +1063,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         set((state) => ({ cuesByRow: { ...state.cuesByRow, [rowId]: structure.cues } }));
       }
       const backupPath = await api.writeSeratoCues(row.filePath, cues);
-      set({ writing: false, writeResult: { ok: 1, failed: 0, backupPath } });
+      set({ writing: false });
+      get().pushToast({ kind: "success", message: "Cues gravados no Serato", detail: `backup: ${backupPath}` });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }

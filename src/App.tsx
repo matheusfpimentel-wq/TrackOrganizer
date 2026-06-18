@@ -13,6 +13,7 @@ import { PlayerBar } from "@/components/PlayerBar";
 import { FindReplace } from "@/components/FindReplace";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SelectionBar } from "@/components/SelectionBar";
+import { Toaster } from "@/components/Toaster";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -20,8 +21,6 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const loadConfig = useLibraryStore((s) => s.loadConfig);
-  const writeResult = useLibraryStore((s) => s.writeResult);
-  const clearWriteResult = useLibraryStore((s) => s.clearWriteResult);
   const setWriteConfirmOpen = useLibraryStore((s) => s.setWriteConfirmOpen);
   const mode = useLibraryStore((s) => s.mode);
   const setMode = useLibraryStore((s) => s.setMode);
@@ -113,25 +112,7 @@ export default function App() {
       <DeepScanPanel />
       <AudioDupPanel />
       <CuePanel />
-
-      {writeResult && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-background px-4 py-3 text-sm shadow-xl">
-          <div className="flex items-center gap-3">
-            <span>
-              Gravado: <span className="text-primary">{writeResult.ok} ok</span>
-              {writeResult.failed > 0 && (
-                <span className="text-danger">, {writeResult.failed} falhou</span>
-              )}
-            </span>
-            <button className="text-xs text-muted-foreground underline" onClick={clearWriteResult}>
-              ok
-            </button>
-          </div>
-          <div className="mt-1 max-w-[360px] truncate text-[11px] text-muted-foreground">
-            backup: {writeResult.backupPath}
-          </div>
-        </div>
-      )}
+      <Toaster />
     </div>
   );
 }
