@@ -26,6 +26,10 @@ fn default_ollama_model() -> String {
     "llama3.1".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// On-disk config, kept in the OS app-config dir. The API key never leaves the
 /// backend: only `PublicConfig` (with `has_api_key`) is exposed to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +52,22 @@ pub struct StoredConfig {
     /// When true, the AI may only pick genres from `genres`.
     #[serde(default)]
     pub genre_strict: bool,
+
+    // --- Streaming-platform enrichment ---
+    #[serde(default = "default_true")]
+    pub enrich_deezer: bool,
+    #[serde(default = "default_true")]
+    pub enrich_musicbrainz: bool,
+    #[serde(default)]
+    pub enrich_spotify: bool,
+    #[serde(default)]
+    pub enrich_soundcloud: bool,
+    #[serde(default)]
+    pub spotify_client_id: String,
+    #[serde(default)]
+    pub spotify_client_secret: String,
+    #[serde(default)]
+    pub acoustid_key: String,
 }
 
 impl Default for StoredConfig {
@@ -61,6 +81,13 @@ impl Default for StoredConfig {
             ollama_model: default_ollama_model(),
             genres: Vec::new(),
             genre_strict: false,
+            enrich_deezer: true,
+            enrich_musicbrainz: true,
+            enrich_spotify: false,
+            enrich_soundcloud: false,
+            spotify_client_id: String::new(),
+            spotify_client_secret: String::new(),
+            acoustid_key: String::new(),
         }
     }
 }
@@ -76,6 +103,13 @@ impl StoredConfig {
             ollama_model: self.ollama_model.clone(),
             genres: self.genres.clone(),
             genre_strict: self.genre_strict,
+            enrich_deezer: self.enrich_deezer,
+            enrich_musicbrainz: self.enrich_musicbrainz,
+            enrich_spotify: self.enrich_spotify,
+            enrich_soundcloud: self.enrich_soundcloud,
+            has_spotify: !self.spotify_client_id.trim().is_empty()
+                && !self.spotify_client_secret.trim().is_empty(),
+            has_acoustid: !self.acoustid_key.trim().is_empty(),
         }
     }
 }
@@ -123,6 +157,13 @@ pub fn update_config(
     ollama_model: Option<String>,
     genres: Option<Vec<String>>,
     genre_strict: Option<bool>,
+    enrich_deezer: Option<bool>,
+    enrich_musicbrainz: Option<bool>,
+    enrich_spotify: Option<bool>,
+    enrich_soundcloud: Option<bool>,
+    spotify_client_id: Option<String>,
+    spotify_client_secret: Option<String>,
+    acoustid_key: Option<String>,
 ) -> Result<PublicConfig, String> {
     let mut cfg = load(&app);
     if let Some(p) = provider {
@@ -164,6 +205,34 @@ pub fn update_config(
     }
     if let Some(strict) = genre_strict {
         cfg.genre_strict = strict;
+    }
+    if let Some(v) = enrich_deezer {
+        cfg.enrich_deezer = v;
+    }
+    if let Some(v) = enrich_musicbrainz {
+        cfg.enrich_musicbrainz = v;
+    }
+    if let Some(v) = enrich_spotify {
+        cfg.enrich_spotify = v;
+    }
+    if let Some(v) = enrich_soundcloud {
+        cfg.enrich_soundcloud = v;
+    }
+    // Secrets: only overwrite when a non-empty value is provided.
+    if let Some(id) = spotify_client_id {
+        if !id.trim().is_empty() {
+            cfg.spotify_client_id = id.trim().to_string();
+        }
+    }
+    if let Some(secret) = spotify_client_secret {
+        if !secret.trim().is_empty() {
+            cfg.spotify_client_secret = secret.trim().to_string();
+        }
+    }
+    if let Some(key) = acoustid_key {
+        if !key.trim().is_empty() {
+            cfg.acoustid_key = key.trim().to_string();
+        }
     }
     save(&app, &cfg)?;
     Ok(cfg.to_public())

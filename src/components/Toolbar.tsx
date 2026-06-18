@@ -24,6 +24,9 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
   const selection = useLibraryStore((s) => s.selection);
   const runAi = useLibraryStore((s) => s.runAi);
   const aiRunning = useLibraryStore((s) => s.aiRunning);
+  const runEnrich = useLibraryStore((s) => s.runEnrich);
+  const enriching = useLibraryStore((s) => s.enriching);
+  const enrichProgress = useLibraryStore((s) => s.enrichProgress);
   const aiProgress = useLibraryStore((s) => s.aiProgress);
   const aiError = useLibraryStore((s) => s.aiError);
   const setAiError = useLibraryStore((s) => s.setAiError);
@@ -144,6 +147,17 @@ export function Toolbar({ onOpenSettings, onOpenFind }: Props) {
               >
                 {provider === "ollama" ? "Ollama" : "Claude"}
               </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={enriching}
+                onClick={() => void runEnrich()}
+                title="Buscar metadados (Deezer/MusicBrainz) para a seleção, ou toda a biblioteca"
+              >
+                {enriching && enrichProgress
+                  ? `Enriquecendo ${enrichProgress.done}/${enrichProgress.total}…`
+                  : "Enriquecer"}
+              </Button>
               <Button variant="default" size="sm" disabled={aiRunning || selection.size === 0} onClick={() => void runAi()}>
                 {aiRunning && aiProgress ? `Autotag ${aiProgress.done}/${aiProgress.total}…` : "Autotag"}
               </Button>

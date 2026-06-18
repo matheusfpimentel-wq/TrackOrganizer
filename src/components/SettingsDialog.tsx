@@ -27,6 +27,8 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [ollamaModel, setOllamaModel] = useState(config.ollamaModel);
   const [genresText, setGenresText] = useState(config.genres.join("\n"));
   const [genreStrict, setGenreStrict] = useState(config.genreStrict);
+  const [enrichDeezer, setEnrichDeezer] = useState(config.enrichDeezer);
+  const [enrichMusicbrainz, setEnrichMusicbrainz] = useState(config.enrichMusicbrainz);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -41,6 +43,8 @@ export function SettingsDialog({ open, onClose }: Props) {
       setOllamaModel(config.ollamaModel);
       setGenresText(config.genres.join("\n"));
       setGenreStrict(config.genreStrict);
+      setEnrichDeezer(config.enrichDeezer);
+      setEnrichMusicbrainz(config.enrichMusicbrainz);
       setApiKey("");
       setError(null);
       setTestResult(null);
@@ -77,6 +81,8 @@ export function SettingsDialog({ open, onClose }: Props) {
         charLimit: Number.parseInt(charLimit, 10) || config.charLimit,
         genres: parsedGenres(),
         genreStrict,
+        enrichDeezer,
+        enrichMusicbrainz,
       };
       if (provider === "claude") {
         patch.model = model.trim();
@@ -274,6 +280,33 @@ export function SettingsDialog({ open, onClose }: Props) {
           />
           Restringir a IA a estes gêneros (modo estrito)
         </label>
+
+        <label className="mb-1 block text-xs text-muted-foreground">Enriquecimento de metadados</label>
+        <div className="mb-1 space-y-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichDeezer}
+              onChange={(e) => setEnrichDeezer(e.target.checked)}
+              className="accent-primary"
+            />
+            Deezer — preenche <strong>BPM</strong> e confirma título/artista/álbum
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichMusicbrainz}
+              onChange={(e) => setEnrichMusicbrainz(e.target.checked)}
+              className="accent-primary"
+            />
+            MusicBrainz — confirma <strong>álbum/ano</strong> e nomes canônicos
+          </label>
+        </div>
+        <p className="mb-4 text-[11px] text-muted-foreground">
+          O botão <strong>Enriquecer</strong> busca esses dados (grátis, sem login). Os fatos
+          viram sugestões revisáveis e também passam como contexto para a IA. Spotify e AcoustID
+          (fingerprint) chegam numa próxima versão.
+        </p>
 
         {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 

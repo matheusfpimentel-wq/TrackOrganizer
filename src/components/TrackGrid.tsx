@@ -23,9 +23,7 @@ import {
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
 );
-import { AI_FIELDS, COLUMNS, type AiField, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
-
-const AI_FIELD_KEYS: ReadonlySet<string> = new Set<string>(AI_FIELDS);
+import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
 import { camelotColor, displayValue, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
 import { revealInFiles } from "@/lib/api";
@@ -1107,27 +1105,27 @@ export function TrackGrid() {
                         {displayValue(value)}
                       </span>
                     )}
-                    {pending && !isEditing && AI_FIELD_KEYS.has(col.key) && (
+                    {pending && !isEditing && (
                       <span className="absolute right-0.5 top-1/2 z-10 hidden -translate-y-1/2 gap-0.5 group-hover:flex">
                         <button
-                          aria-label="Aceitar sugestão da IA"
+                          aria-label="Aceitar sugestão"
                           title={`Aceitar: ${displayValue(row.suggested?.[col.key] ?? null)}`}
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            applySuggestion(row.id, col.key as AiField);
+                            applySuggestion(row.id, col.key);
                           }}
                           className="rounded bg-suggested px-1 text-[10px] font-bold leading-tight text-black hover:brightness-110"
                         >
                           ✓
                         </button>
                         <button
-                          aria-label="Rejeitar sugestão da IA"
+                          aria-label="Rejeitar sugestão"
                           title="Rejeitar sugestão"
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            rejectSuggestion(row.id, col.key as AiField);
+                            rejectSuggestion(row.id, col.key);
                           }}
                           className="rounded bg-danger px-1 text-[10px] font-bold leading-tight text-white hover:brightness-110"
                         >

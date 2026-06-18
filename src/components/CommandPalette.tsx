@@ -54,6 +54,7 @@ export function CommandPalette({ open, onClose, onOpenSettings, onOpenFind }: Pr
         enabled: () => st().selection.size > 0 && !st().aiRunning,
         run: wrap(() => void st().runAi()),
       },
+      { id: "enrich", group: "IA", label: "Enriquecer (Deezer/MusicBrainz)", run: wrap(() => void st().runEnrich()) },
       {
         id: "review",
         group: "IA",

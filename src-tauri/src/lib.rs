@@ -2,6 +2,7 @@ mod ai;
 mod commands;
 mod config;
 mod deepscan;
+mod enrich;
 mod import;
 mod model;
 mod scan;
@@ -35,6 +36,7 @@ pub fn run() {
             config::clear_api_key,
             ai::tag_with_ai,
             ai::check_ollama,
+            enrich::enrich_tracks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tracklistr");

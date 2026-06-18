@@ -76,6 +76,12 @@ inteiro em `energy`. NÃO escreva energia dentro de `comment` (o app cuida disso
     }
 
     rules.push_str(
+        "\nMETADADOS DE REFERÊNCIA:\n- Alguns itens trazem um campo `reference` com dados \
+externos (Deezer/MusicBrainz). Trate-o como fonte confiável para confirmar artista/título \
+e para ano/álbum/BPM; prefira-o a adivinhar, mas mantenha as regras de formatação acima.\n",
+    );
+
+    rules.push_str(
         "\nSAÍDA:\n- Devolva uma entrada por faixa, usando o MESMO `id` recebido. Inclua \
 APENAS os campos solicitados; se não tiver certeza de um campo, omita-o. Não invente dados \
 factuais (ano/álbum).\n",

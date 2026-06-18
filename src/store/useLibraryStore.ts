@@ -146,9 +146,15 @@ interface LibraryState {
   saveConfig: (patch: ConfigPatch) => Promise<void>;
   clearApiKey: () => Promise<void>;
 
+  /** Reference text per row from streaming platforms, fed to the AI prompt. */
+  references: Record<string, string>;
+  enriching: boolean;
+  enrichProgress: { done: number; total: number } | null;
+  runEnrich: () => Promise<void>;
+
   runAi: () => Promise<void>;
-  applySuggestion: (rowId: string, field: AiField) => void;
-  rejectSuggestion: (rowId: string, field: AiField) => void;
+  applySuggestion: (rowId: string, field: TagKey) => void;
+  rejectSuggestion: (rowId: string, field: TagKey) => void;
   applyAllSuggestions: () => void;
   rejectAllSuggestions: () => void;
   setReviewOpen: (open: boolean) => void;
@@ -275,8 +281,9 @@ function buildAiTargets(selection: Set<string>): {
   return { perRow, fields: [...fields] };
 }
 
-function toAiInput(row: TrackRow): api.AiTrackInput {
+function toAiInput(row: TrackRow, references?: Record<string, string>): api.AiTrackInput {
   const t = row.edited;
+  const reference = references?.[row.id];
   return {
     id: row.id,
     title: t.title,
@@ -288,6 +295,7 @@ function toAiInput(row: TrackRow): api.AiTrackInput {
     key: t.key,
     year: t.year,
     fileName: row.fileName,
+    ...(reference ? { reference } : {}),
   };
 }
 
@@ -334,7 +342,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     ollamaModel: "llama3.1",
     genres: [],
     genreStrict: false,
+    enrichDeezer: true,
+    enrichMusicbrainz: true,
+    enrichSpotify: false,
+    enrichSoundcloud: false,
+    hasSpotify: false,
+    hasAcoustid: false,
   },
+
+  references: {},
+  enriching: false,
+  enrichProgress: null,
 
   aiRunning: false,
   aiProgress: null,
@@ -670,6 +688,85 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ config });
   },
 
+  runEnrich: async () => {
+    const { rows, selection } = get();
+    let targets: TrackRow[];
+    if (selection.size > 0) {
+      const ids = new Set<string>();
+      for (const key of selection) {
+        const sep = key.indexOf("::");
+        if (sep > 0) ids.add(key.slice(0, sep));
+      }
+      targets = rows.filter((r) => ids.has(r.id) && !r.error);
+    } else {
+      targets = rows.filter((r) => !r.error);
+    }
+    if (targets.length === 0) {
+      set({ aiError: "Selecione faixas para enriquecer (ou carregue a biblioteca)." });
+      return;
+    }
+    set({ enriching: true, aiError: null, enrichProgress: { done: 0, total: targets.length } });
+    try {
+      const byId = new Map<string, api.Enrichment>();
+      let done = 0;
+      for (const part of chunk(targets, 15)) {
+        const inputs = part.map((r) => ({ id: r.id, title: r.edited.title, artist: r.edited.artist }));
+        const res = await api.enrichTracks(inputs);
+        for (const e of res) byId.set(e.id, e);
+        done += part.length;
+        set({ enrichProgress: { done, total: targets.length } });
+      }
+      const refs: Record<string, string> = { ...get().references };
+      set((state) => ({
+        ...historyPatch(state),
+        enriching: false,
+        enrichProgress: null,
+        rows: state.rows.map((row) => {
+          const e = byId.get(row.id);
+          if (!e) return row;
+          const parts: string[] = [];
+          if (e.title) parts.push(`título=${e.title}`);
+          if (e.artist) parts.push(`artista=${e.artist}`);
+          if (e.album) parts.push(`álbum=${e.album}`);
+          if (e.year != null) parts.push(`ano=${e.year}`);
+          if (e.bpm != null) parts.push(`bpm=${e.bpm}`);
+          if (e.genre) parts.push(`gênero=${e.genre}`);
+          if (e.sources.length > 0) parts.push(`fontes: ${e.sources.join(", ")}`);
+          if (parts.length > 0) refs[row.id] = parts.join("; ");
+          // Factual fields become reviewable suggestions (only when they add info).
+          const sug: Partial<TrackTags> = { ...(row.suggested ?? {}) };
+          let changed = false;
+          if (e.bpm != null && row.edited.bpm !== e.bpm) {
+            sug.bpm = e.bpm;
+            changed = true;
+          }
+          if (e.year != null && row.edited.year !== e.year) {
+            sug.year = e.year;
+            changed = true;
+          }
+          if (e.album && row.edited.album.trim() === "") {
+            sug.album = e.album;
+            changed = true;
+          }
+          if (e.genre && row.edited.genre.trim() === "") {
+            sug.genre = e.genre;
+            changed = true;
+          }
+          if (!changed) return row;
+          return { ...row, suggested: sug, status: "pending_approval" };
+        }),
+      }));
+      set({ references: refs });
+      get().pushToast({
+        kind: "info",
+        message: `Enriquecidas ${byId.size} faixa(s)`,
+        detail: "Fatos viraram sugestões (revise) e passam a alimentar a IA.",
+      });
+    } catch (err) {
+      set({ enriching: false, enrichProgress: null, aiError: String(err) });
+    }
+  },
+
   runAi: async () => {
     const { rows, selection, config } = get();
     const { perRow, fields } = buildAiTargets(selection);
@@ -693,7 +790,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       let done = 0;
       for (const part of chunk(targetRows, AI_CHUNK)) {
         const res = await api.tagWithAi({
-          tracks: part.map(toAiInput),
+          tracks: part.map((r) => toAiInput(r, get().references)),
           fields,
           charLimit: config.charLimit,
         });
@@ -775,7 +872,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           return row;
         }
         let edited: TrackTags = { ...row.edited };
-        for (const field of AI_FIELDS) {
+        for (const field of Object.keys(row.suggested) as TagKey[]) {
           const value = row.suggested[field];
           if (value !== undefined) {
             edited = { ...edited, [field]: value };

@@ -70,6 +70,39 @@ pub struct AiTrackInput {
     pub key: String,
     pub year: Option<i32>,
     pub file_name: String,
+    /// External reference metadata (from streaming platforms), when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+}
+
+/// One track to look up on the streaming platforms.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrichInput {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+}
+
+/// Reference metadata fetched for one track. Only known fields are populated.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Enrichment {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bpm: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
+    /// Which providers contributed (e.g. ["Deezer", "MusicBrainz"]).
+    pub sources: Vec<String>,
 }
 
 /// One AI tagging request (already chunked to ~20 tracks by the frontend).
@@ -180,4 +213,11 @@ pub struct PublicConfig {
     pub ollama_model: String,
     pub genres: Vec<String>,
     pub genre_strict: bool,
+    /// Streaming-platform enrichment toggles + key presence (no secrets exposed).
+    pub enrich_deezer: bool,
+    pub enrich_musicbrainz: bool,
+    pub enrich_spotify: bool,
+    pub enrich_soundcloud: bool,
+    pub has_spotify: bool,
+    pub has_acoustid: bool,
 }
