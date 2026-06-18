@@ -15,10 +15,15 @@ priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · �
 - **Estética**: densidade **Compacta/Confortável** (persistida), **zebra striping**,
   **empty state** com ações e dica do `Ctrl+K`, barra de controles acima da grade.
 
-### Pendentes desta leva (próximos PRs)
-- Barra de ação contextual flutuante na seleção (eixo "menos cliques").
-- Views salvas / Smart Crates + agrupar por (eixo "bibliotecas grandes").
-- Toasts unificados, dashboard de saúde da biblioteca, resolver duplicatas (eixo "estética/funções").
+### Também implementado (2ª parte da leva)
+- **Barra de ação contextual** na seleção (definir gênero/energia, autotag, +setlist).
+- **Views salvas / Smart Crates** (busca + lente + ordenação + filtros de coluna).
+- **Toasts unificados** (gravar/renomear/desfazer/cues).
+- **Dashboard de saúde** da biblioteca (+ lentes "sem capa" e "sem BPM").
+- **Resolver duplicatas**: marca a melhor de cada grupo e seleciona as outras.
+
+### Ainda pendente
+- **Agrupar por** (genre/Tom/BPM) com grupos recolhíveis.
 
 ## ✅ Implementado (leva UX quick-wins)
 - Duração da faixa + **tempo total do set** (item 3)
