@@ -14,6 +14,7 @@ import { FindReplace } from "@/components/FindReplace";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SelectionBar } from "@/components/SelectionBar";
 import { Toaster } from "@/components/Toaster";
+import { HealthPanel } from "@/components/HealthPanel";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function App() {
@@ -112,6 +113,7 @@ export default function App() {
       <DeepScanPanel />
       <AudioDupPanel />
       <CuePanel />
+      <HealthPanel />
       <Toaster />
     </div>
   );

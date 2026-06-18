@@ -75,6 +75,7 @@ export function CommandPalette({ open, onClose, onOpenSettings, onOpenFind }: Pr
         enabled: () => st().selection.size > 0,
         run: wrap(() => void st().runDeepScan()),
       },
+      { id: "health", group: "Análise", label: "Saúde da biblioteca", run: wrap(() => st().setHealthOpen(true)) },
       { id: "dups", group: "Análise", label: "Detectar duplicatas por áudio", run: wrap(() => void st().runAudioDuplicates()) },
       {
         id: "cues",

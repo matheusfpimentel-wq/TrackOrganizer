@@ -115,6 +115,7 @@ export function TrackGrid() {
   const genres = useLibraryStore((s) => s.config.genres);
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
+  const setHealthOpen = useLibraryStore((s) => s.setHealthOpen);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
   const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
@@ -755,6 +756,13 @@ export function TrackGrid() {
             </>
           )}
         </div>
+        <button
+          onClick={() => setHealthOpen(true)}
+          className="rounded border border-border px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
+          title="Saúde da biblioteca"
+        >
+          Saúde
+        </button>
         <div className="ml-auto flex items-center gap-1 text-muted-foreground">
           <span>Densidade</span>
           {(["compact", "comfortable"] as const).map((d) => (

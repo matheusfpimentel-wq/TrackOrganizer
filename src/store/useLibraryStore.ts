@@ -79,6 +79,9 @@ interface LibraryState {
   toasts: Toast[];
   lastWrite: LastWrite | null;
   writeConfirmOpen: boolean;
+  /** Library health dashboard modal. */
+  healthOpen: boolean;
+  setHealthOpen: (open: boolean) => void;
 
   /** Ordered setlist (row id + transition note to the next track). */
   setlist: { rowId: string; note: string }[];
@@ -342,6 +345,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   toasts: [],
   lastWrite: null,
   writeConfirmOpen: false,
+  healthOpen: false,
 
   setlist: [],
   setlistOpen: false,
@@ -864,6 +868,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setWriteConfirmOpen: (open) => set({ writeConfirmOpen: open }),
+  setHealthOpen: (open) => set({ healthOpen: open }),
 
   setSetlistOpen: (open) => set({ setlistOpen: open }),
 

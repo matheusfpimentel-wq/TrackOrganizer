@@ -1,6 +1,6 @@
 import type { TrackRow } from "@/types/track";
 
-export type Lens = "all" | "duplicates" | "no-genre" | "issues";
+export type Lens = "all" | "duplicates" | "no-genre" | "issues" | "no-artwork" | "no-bpm";
 
 function norm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -65,22 +65,37 @@ export interface Analysis {
   duplicates: Set<string>;
   noGenre: Set<string>;
   issues: Map<string, string[]>;
+  noArtwork: Set<string>;
+  noBpm: Set<string>;
 }
 
 export function analyze(rows: TrackRow[]): Analysis {
   const duplicates = findDuplicateIds(rows);
   const noGenre = new Set<string>();
   const issues = new Map<string, string[]>();
+  const noArtwork = new Set<string>();
+  const noBpm = new Set<string>();
   for (const row of rows) {
-    if (row.status !== "error" && !row.edited.genre.trim()) {
+    if (row.status === "error") {
+      const found = rowIssues(row);
+      if (found.length > 0) issues.set(row.id, found);
+      continue;
+    }
+    if (!row.edited.genre.trim()) {
       noGenre.add(row.id);
+    }
+    if (!row.hasArtwork) {
+      noArtwork.add(row.id);
+    }
+    if (row.edited.bpm === null) {
+      noBpm.add(row.id);
     }
     const found = rowIssues(row);
     if (found.length > 0) {
       issues.set(row.id, found);
     }
   }
-  return { duplicates, noGenre, issues };
+  return { duplicates, noGenre, issues, noArtwork, noBpm };
 }
 
 /** Restrict rows to the active lens. */
@@ -92,6 +107,10 @@ export function applyLens(rows: TrackRow[], lens: Lens, analysis: Analysis): Tra
       return rows.filter((r) => analysis.noGenre.has(r.id));
     case "issues":
       return rows.filter((r) => analysis.issues.has(r.id));
+    case "no-artwork":
+      return rows.filter((r) => analysis.noArtwork.has(r.id));
+    case "no-bpm":
+      return rows.filter((r) => analysis.noBpm.has(r.id));
     default:
       return rows;
   }
