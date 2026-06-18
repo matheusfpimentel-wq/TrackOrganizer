@@ -29,6 +29,9 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [genreStrict, setGenreStrict] = useState(config.genreStrict);
   const [enrichDeezer, setEnrichDeezer] = useState(config.enrichDeezer);
   const [enrichMusicbrainz, setEnrichMusicbrainz] = useState(config.enrichMusicbrainz);
+  const [enrichSpotify, setEnrichSpotify] = useState(config.enrichSpotify);
+  const [spotifyClientId, setSpotifyClientId] = useState("");
+  const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -45,6 +48,9 @@ export function SettingsDialog({ open, onClose }: Props) {
       setGenreStrict(config.genreStrict);
       setEnrichDeezer(config.enrichDeezer);
       setEnrichMusicbrainz(config.enrichMusicbrainz);
+      setEnrichSpotify(config.enrichSpotify);
+      setSpotifyClientId("");
+      setSpotifyClientSecret("");
       setApiKey("");
       setError(null);
       setTestResult(null);
@@ -83,7 +89,14 @@ export function SettingsDialog({ open, onClose }: Props) {
         genreStrict,
         enrichDeezer,
         enrichMusicbrainz,
+        enrichSpotify,
       };
+      if (spotifyClientId.trim()) {
+        patch.spotifyClientId = spotifyClientId.trim();
+      }
+      if (spotifyClientSecret.trim()) {
+        patch.spotifyClientSecret = spotifyClientSecret.trim();
+      }
       if (provider === "claude") {
         patch.model = model.trim();
         if (apiKey.trim()) {
@@ -301,7 +314,42 @@ export function SettingsDialog({ open, onClose }: Props) {
             />
             MusicBrainz — confirma <strong>álbum/ano</strong> e nomes canônicos
           </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichSpotify}
+              onChange={(e) => setEnrichSpotify(e.target.checked)}
+              className="accent-primary"
+            />
+            Spotify — <strong>gênero</strong> (do artista) + álbum/ano{" "}
+            <span className={config.hasSpotify ? "text-primary" : "text-dirty"}>
+              {config.hasSpotify ? "(chave ok)" : "(sem chave)"}
+            </span>
+          </label>
         </div>
+        {enrichSpotify && (
+          <div className="mb-2 space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
+            <Input
+              value={spotifyClientId}
+              onChange={(e) => setSpotifyClientId(e.target.value)}
+              placeholder={config.hasSpotify ? "Client ID (deixe vazio para manter)" : "Spotify Client ID"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <Input
+              type="password"
+              value={spotifyClientSecret}
+              onChange={(e) => setSpotifyClientSecret(e.target.value)}
+              placeholder={config.hasSpotify ? "Client Secret (deixe vazio para manter)" : "Spotify Client Secret"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Crie um app grátis em developer.spotify.com → Dashboard. Guardado só no backend.
+              Sem BPM/tom (API descontinuada).
+            </p>
+          </div>
+        )}
         <p className="mb-4 text-[11px] text-muted-foreground">
           O botão <strong>Enriquecer</strong> busca esses dados (grátis, sem login). Os fatos
           viram sugestões revisáveis e também passam como contexto para a IA. Spotify e AcoustID
