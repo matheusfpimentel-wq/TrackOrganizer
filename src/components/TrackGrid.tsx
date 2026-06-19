@@ -58,6 +58,9 @@ const NUMERIC_COLS: ReadonlySet<string> = new Set(
   COLUMNS.filter((c) => c.type === "number").map((c) => c.key),
 );
 
+/** Large delta used to jump to the first/last row or column (clamped). */
+const BIG = 1_000_000;
+
 /**
  * Match a cell value against a per-column filter expression. Numeric columns
  * understand ranges ("120-130"), comparisons (">120", "<=128") and exact
@@ -259,6 +262,13 @@ export function TrackGrid() {
     return out;
   }, [visible, groupBy, collapsedGroups]);
 
+  // Rows in display order (respects grouping + collapsed groups). All keyboard
+  // navigation / range math runs over this so it matches what's on screen.
+  const orderedRows = useMemo(
+    () => items.flatMap((it) => (it.type === "row" ? [it.row] : [])),
+    [items],
+  );
+
   const toggleGroup = useCallback((key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
@@ -278,6 +288,9 @@ export function TrackGrid() {
 
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
+  // The moving "active"/focus cell (distinct from `anchor`, the fixed range
+  // corner). Arrow keys move `active`; Shift+arrows extend from `anchor`.
+  const [active, setActive] = useState<{ rowId: string; colKey: TagKey } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   useEffect(() => {
@@ -287,6 +300,20 @@ export function TrackGrid() {
     window.addEventListener("mouseup", stop);
     return () => window.removeEventListener("mouseup", stop);
   }, []);
+
+  // Focus the grid and pick the first cell once rows load, so arrow keys and
+  // type-to-edit work immediately without clicking first.
+  useEffect(() => {
+    if (active || orderedRows.length === 0) return;
+    const first = orderedRows[0];
+    const firstCol = COLUMNS[0];
+    if (first && firstCol) {
+      const cell = { rowId: first.id, colKey: firstCol.key };
+      setActive(cell);
+      setAnchor(cell);
+      containerRef.current?.focus({ preventScroll: true });
+    }
+  }, [active, orderedRows, setAnchor]);
 
   // Resizable, persisted column widths.
   const [widths, setWidths] = useState<Record<string, number>>(() => loadColWidths(DEFAULT_WIDTHS));
@@ -351,9 +378,18 @@ export function TrackGrid() {
 
   const rowIndexById = useMemo(() => {
     const m = new Map<string, number>();
-    visible.forEach((r, i) => m.set(r.id, i));
+    orderedRows.forEach((r, i) => m.set(r.id, i));
     return m;
-  }, [visible]);
+  }, [orderedRows]);
+
+  // Index of each row within the flat `items` list (for scroll math).
+  const itemIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((it, i) => {
+      if (it.type === "row") m.set(it.row.id, i);
+    });
+    return m;
+  }, [items]);
 
   const colIndexByKey = useMemo(() => {
     const m = new Map<TagKey, number>();
@@ -361,13 +397,30 @@ export function TrackGrid() {
     return m;
   }, []);
 
+  // Scroll the container so a given row is visible (works with virtualization).
+  const scrollRowIntoView = useCallback(
+    (rowId: string) => {
+      const el = containerRef.current;
+      const idx = itemIndexById.get(rowId);
+      if (!el || idx === undefined) return;
+      const top = idx * rowH;
+      const headerH = 60; // sticky header (+ filter row) approx
+      if (top - headerH < el.scrollTop) {
+        el.scrollTop = Math.max(0, top - headerH);
+      } else if (top + rowH > el.scrollTop + el.clientHeight) {
+        el.scrollTop = top + rowH - el.clientHeight;
+      }
+    },
+    [itemIndexById, rowH],
+  );
+
   const buildRange = useCallback(
     (r1: number, c1: number, r2: number, c2: number): Set<string> => {
       const keys = new Set<string>();
       const [rLo, rHi] = r1 <= r2 ? [r1, r2] : [r2, r1];
       const [cLo, cHi] = c1 <= c2 ? [c1, c2] : [c2, c1];
       for (let r = rLo; r <= rHi; r++) {
-        const row = visible[r];
+        const row = orderedRows[r];
         if (!row) continue;
         for (let c = cLo; c <= cHi; c++) {
           const col = COLUMNS[c];
@@ -377,7 +430,7 @@ export function TrackGrid() {
       }
       return keys;
     },
-    [visible],
+    [orderedRows],
   );
 
   const onCellMouseDown = useCallback(
@@ -393,6 +446,7 @@ export function TrackGrid() {
         const aCol = colIndexByKey.get(anchor.colKey);
         if (aRow !== undefined && aCol !== undefined) {
           setSelection(buildRange(aRow, aCol, rowIndex, colIndex));
+          setActive({ rowId, colKey });
           return;
         }
       }
@@ -406,10 +460,12 @@ export function TrackGrid() {
         }
         setSelection(next);
         setAnchor({ rowId, colKey });
+        setActive({ rowId, colKey });
         return;
       }
       setSelection(new Set([cellKey(rowId, colKey)]));
       setAnchor({ rowId, colKey });
+      setActive({ rowId, colKey });
       draggingRef.current = true; // begin drag-select
     },
     [anchor, buildRange, colIndexByKey, editing, rowIndexById, selection, setAnchor, setSelection],
@@ -426,6 +482,7 @@ export function TrackGrid() {
         return;
       }
       setSelection(buildRange(aRow, aCol, rowIndex, colIndex));
+      setActive({ rowId, colKey });
     },
     [anchor, buildRange, colIndexByKey, rowIndexById, setSelection],
   );
@@ -433,14 +490,16 @@ export function TrackGrid() {
   const selectColumn = useCallback(
     (col: ColumnDef) => {
       const keys = new Set<string>();
-      for (const row of visible) {
+      for (const row of orderedRows) {
         keys.add(cellKey(row.id, col.key));
       }
       setSelection(keys);
-      const first = visible[0];
-      setAnchor(first ? { rowId: first.id, colKey: col.key } : null);
+      const first = orderedRows[0];
+      const cell = first ? { rowId: first.id, colKey: col.key } : null;
+      setAnchor(cell);
+      setActive(cell);
     },
-    [setAnchor, setSelection, visible],
+    [setAnchor, setSelection, orderedRows],
   );
 
   const selectRow = useCallback(
@@ -451,7 +510,9 @@ export function TrackGrid() {
       }
       setSelection(keys);
       const firstCol = COLUMNS[0];
-      setAnchor(firstCol ? { rowId: row.id, colKey: firstCol.key } : null);
+      const cell = firstCol ? { rowId: row.id, colKey: firstCol.key } : null;
+      setAnchor(cell);
+      setActive(cell);
     },
     [setAnchor, setSelection],
   );
@@ -487,7 +548,7 @@ export function TrackGrid() {
     if (maxR < 0) return;
     const lines: string[] = [];
     for (let r = minR; r <= maxR; r++) {
-      const row = visible[r];
+      const row = orderedRows[r];
       if (!row) continue;
       const vals: string[] = [];
       for (let c = minC; c <= maxC; c++) {
@@ -497,7 +558,7 @@ export function TrackGrid() {
       lines.push(vals.join("\t"));
     }
     void navigator.clipboard.writeText(lines.join("\n"));
-  }, [selection, visible, rowIndexById, colIndexByKey]);
+  }, [selection, orderedRows, rowIndexById, colIndexByKey]);
 
   // Paste TSV starting at the anchor; a single value fills the whole selection.
   const pasteClipboard = useCallback(async () => {
@@ -522,14 +583,14 @@ export function TrackGrid() {
     const aCol = colIndexByKey.get(anchor.colKey);
     if (aRow === undefined || aCol === undefined) return;
     grid.forEach((cols, i) => {
-      const row = visible[aRow + i];
+      const row = orderedRows[aRow + i];
       if (!row) return;
       cols.forEach((val, j) => {
         const col = COLUMNS[aCol + j];
         if (col) setCell(row.id, col.key, val);
       });
     });
-  }, [anchor, selection, visible, rowIndexById, colIndexByKey, setCell]);
+  }, [anchor, selection, orderedRows, rowIndexById, colIndexByKey, setCell]);
 
   // Excel-style fill-down: the top row of the selection rectangle seeds the
   // cells below it (per column), applied as one undo step.
@@ -553,27 +614,29 @@ export function TrackGrid() {
     const updates: { rowId: string; key: TagKey; raw: string }[] = [];
     for (let c = minC; c <= maxC; c++) {
       const col = COLUMNS[c];
-      const src = visible[minR];
+      const src = orderedRows[minR];
       if (!col || !src) continue;
       const val = displayValue(src.edited[col.key]);
       for (let r = minR + 1; r <= maxR; r++) {
-        const row = visible[r];
+        const row = orderedRows[r];
         if (row) updates.push({ rowId: row.id, key: col.key, raw: val });
       }
     }
     setCells(updates);
-  }, [selection, visible, rowIndexById, colIndexByKey, setCells]);
+  }, [selection, orderedRows, rowIndexById, colIndexByKey, setCells]);
 
   const selectAllVisible = useCallback(() => {
     const keys = new Set<string>();
-    for (const row of visible) {
+    for (const row of orderedRows) {
       for (const col of COLUMNS) keys.add(cellKey(row.id, col.key));
     }
     setSelection(keys);
-    const first = visible[0];
+    const first = orderedRows[0];
     const firstCol = COLUMNS[0];
-    setAnchor(first && firstCol ? { rowId: first.id, colKey: firstCol.key } : null);
-  }, [visible, setSelection, setAnchor]);
+    const cell = first && firstCol ? { rowId: first.id, colKey: firstCol.key } : null;
+    setAnchor(cell);
+    setActive(cell);
+  }, [orderedRows, setSelection, setAnchor]);
 
   const onInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -583,10 +646,13 @@ export function TrackGrid() {
         // Move down to the same column after committing.
         if (editing) {
           const r = rowIndexById.get(editing.rowId);
-          const next = r === undefined ? undefined : visible[r + 1];
+          const next = r === undefined ? undefined : orderedRows[r + 1];
           if (next) {
+            const cell = { rowId: next.id, colKey: editing.colKey };
             setSelection(new Set([cellKey(next.id, editing.colKey)]));
-            setAnchor({ rowId: next.id, colKey: editing.colKey });
+            setAnchor(cell);
+            setActive(cell);
+            scrollRowIntoView(next.id);
           }
         }
       } else if (e.key === "Tab") {
@@ -598,10 +664,12 @@ export function TrackGrid() {
           const c = colIndexByKey.get(editing.colKey);
           if (r !== undefined && c !== undefined) {
             const col = COLUMNS[e.shiftKey ? c - 1 : c + 1];
-            const row = visible[r];
+            const row = orderedRows[r];
             if (col && row) {
+              const cell = { rowId: row.id, colKey: col.key };
               setSelection(new Set([cellKey(row.id, col.key)]));
-              setAnchor({ rowId: row.id, colKey: col.key });
+              setAnchor(cell);
+              setActive(cell);
             }
           }
         }
@@ -610,32 +678,46 @@ export function TrackGrid() {
         setEditing(null);
       }
     },
-    [commitEdit, editing, colIndexByKey, rowIndexById, setAnchor, setSelection, visible],
+    [commitEdit, editing, colIndexByKey, rowIndexById, setAnchor, setSelection, orderedRows, scrollRowIntoView],
   );
 
   const moveActive = useCallback(
-    (dr: number, dc: number) => {
-      if (!anchor) {
-        const first = visible[0];
+    (dr: number, dc: number, extend = false) => {
+      const cur = active ?? anchor;
+      if (!cur) {
+        const first = orderedRows[0];
         const firstCol = COLUMNS[0];
         if (first && firstCol) {
+          const cell = { rowId: first.id, colKey: firstCol.key };
           setSelection(new Set([cellKey(first.id, firstCol.key)]));
-          setAnchor({ rowId: first.id, colKey: firstCol.key });
+          setAnchor(cell);
+          setActive(cell);
         }
         return;
       }
-      const r = rowIndexById.get(anchor.rowId);
-      const c = colIndexByKey.get(anchor.colKey);
+      const r = rowIndexById.get(cur.rowId);
+      const c = colIndexByKey.get(cur.colKey);
       if (r === undefined || c === undefined) return;
-      const nr = Math.max(0, Math.min(visible.length - 1, r + dr));
+      const nr = Math.max(0, Math.min(orderedRows.length - 1, r + dr));
       const nc = Math.max(0, Math.min(COLUMNS.length - 1, c + dc));
-      const row = visible[nr];
+      const row = orderedRows[nr];
       const col = COLUMNS[nc];
       if (!row || !col) return;
-      setSelection(new Set([cellKey(row.id, col.key)]));
-      setAnchor({ rowId: row.id, colKey: col.key });
+      const cell = { rowId: row.id, colKey: col.key };
+      setActive(cell);
+      if (extend && anchor) {
+        const aR = rowIndexById.get(anchor.rowId);
+        const aC = colIndexByKey.get(anchor.colKey);
+        if (aR !== undefined && aC !== undefined) {
+          setSelection(buildRange(aR, aC, nr, nc));
+        }
+      } else {
+        setAnchor(cell);
+        setSelection(new Set([cellKey(row.id, col.key)]));
+      }
+      scrollRowIntoView(row.id);
     },
-    [anchor, colIndexByKey, rowIndexById, setAnchor, setSelection, visible],
+    [active, anchor, buildRange, colIndexByKey, orderedRows, rowIndexById, scrollRowIntoView, setAnchor, setSelection],
   );
 
   const onGridKeyDown = useCallback(
@@ -673,7 +755,18 @@ export function TrackGrid() {
           selectAllVisible();
           return;
         }
+        if (k === "home") {
+          e.preventDefault();
+          moveActive(-BIG, -BIG, e.shiftKey);
+          return;
+        }
+        if (k === "end") {
+          e.preventDefault();
+          moveActive(BIG, BIG, e.shiftKey);
+          return;
+        }
       }
+      const pageRows = Math.max(1, Math.floor(viewportH / rowH) - 1);
       switch (e.key) {
         case "Delete":
         case "Backspace":
@@ -684,43 +777,64 @@ export function TrackGrid() {
           return;
         case "ArrowUp":
           e.preventDefault();
-          moveActive(e.shiftKey ? -1 : -1, 0);
+          moveActive(-1, 0, e.shiftKey);
           return;
         case "ArrowDown":
           e.preventDefault();
-          moveActive(1, 0);
+          moveActive(1, 0, e.shiftKey);
           return;
         case "ArrowLeft":
           e.preventDefault();
-          moveActive(0, -1);
+          moveActive(0, -1, e.shiftKey);
           return;
         case "ArrowRight":
+          e.preventDefault();
+          moveActive(0, 1, e.shiftKey);
+          return;
         case "Tab":
           e.preventDefault();
-          moveActive(0, e.key === "Tab" && e.shiftKey ? -1 : 1);
+          moveActive(0, e.shiftKey ? -1 : 1);
+          return;
+        case "Home":
+          e.preventDefault();
+          moveActive(0, -BIG, e.shiftKey);
+          return;
+        case "End":
+          e.preventDefault();
+          moveActive(0, BIG, e.shiftKey);
+          return;
+        case "PageUp":
+          e.preventDefault();
+          moveActive(-pageRows, 0, e.shiftKey);
+          return;
+        case "PageDown":
+          e.preventDefault();
+          moveActive(pageRows, 0, e.shiftKey);
           return;
         case "Enter":
-          if (anchor) {
-            const row = visible[rowIndexById.get(anchor.rowId) ?? -1];
-            if (row) {
-              e.preventDefault();
-              beginEdit(row, anchor.colKey);
-            }
+        case "F2": {
+          const cur = active ?? anchor;
+          const row = cur ? orderedRows[rowIndexById.get(cur.rowId) ?? -1] : undefined;
+          if (cur && row) {
+            e.preventDefault();
+            beginEdit(row, cur.colKey);
           }
           return;
+        }
         default:
-          // Type a printable character to start editing that cell.
-          if (anchor && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const row = visible[rowIndexById.get(anchor.rowId) ?? -1];
-            if (row) {
-              setEditing({ rowId: row.id, colKey: anchor.colKey });
+          // Type a printable character to start editing the active cell.
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const cur = active ?? anchor;
+            const row = cur ? orderedRows[rowIndexById.get(cur.rowId) ?? -1] : undefined;
+            if (cur && row) {
+              setEditing({ rowId: row.id, colKey: cur.colKey });
               setDraft(e.key);
               e.preventDefault();
             }
           }
       }
     },
-    [anchor, beginEdit, clearCells, copySelection, editing, fillDown, moveActive, pasteClipboard, redoEdit, rowIndexById, selectAllVisible, selection, undoEdit, visible],
+    [active, anchor, beginEdit, clearCells, copySelection, editing, fillDown, moveActive, orderedRows, pasteClipboard, redoEdit, rowH, rowIndexById, selectAllVisible, selection, undoEdit, viewportH],
   );
 
   if (rows.length === 0) {
@@ -1039,6 +1153,7 @@ export function TrackGrid() {
               {COLUMNS.map((col) => {
                 const key = cellKey(row.id, col.key);
                 const selected = selection.has(key);
+                const isActive = active?.rowId === row.id && active.colKey === col.key;
                 const dirty = row.edited[col.key] !== row.original[col.key];
                 const pending = row.suggested?.[col.key] !== undefined;
                 const isEditing = editing?.rowId === row.id && editing.colKey === col.key;
@@ -1065,6 +1180,7 @@ export function TrackGrid() {
                       selected && "bg-primary/25 ring-1 ring-inset ring-primary",
                       pending && !selected && "bg-suggested/15 ring-1 ring-inset ring-suggested",
                       dirty && !selected && !pending && !keyColor && "bg-dirty/10",
+                      isActive && !isEditing && "ring-2 ring-inset ring-primary",
                     )}
                     title={pending ? `IA sugere: ${displayValue(row.suggested?.[col.key] ?? null)}` : undefined}
                   >
