@@ -58,6 +58,8 @@ pub struct StoredConfig {
     pub enrich_deezer: bool,
     #[serde(default = "default_true")]
     pub enrich_musicbrainz: bool,
+    #[serde(default = "default_true")]
+    pub enrich_itunes: bool,
     #[serde(default)]
     pub enrich_spotify: bool,
     #[serde(default)]
@@ -83,6 +85,7 @@ impl Default for StoredConfig {
             genre_strict: false,
             enrich_deezer: true,
             enrich_musicbrainz: true,
+            enrich_itunes: true,
             enrich_spotify: false,
             enrich_soundcloud: false,
             spotify_client_id: String::new(),
@@ -105,6 +108,7 @@ impl StoredConfig {
             genre_strict: self.genre_strict,
             enrich_deezer: self.enrich_deezer,
             enrich_musicbrainz: self.enrich_musicbrainz,
+            enrich_itunes: self.enrich_itunes,
             enrich_spotify: self.enrich_spotify,
             enrich_soundcloud: self.enrich_soundcloud,
             has_spotify: !self.spotify_client_id.trim().is_empty()
@@ -159,6 +163,7 @@ pub fn update_config(
     genre_strict: Option<bool>,
     enrich_deezer: Option<bool>,
     enrich_musicbrainz: Option<bool>,
+    enrich_itunes: Option<bool>,
     enrich_spotify: Option<bool>,
     enrich_soundcloud: Option<bool>,
     spotify_client_id: Option<String>,
@@ -211,6 +216,9 @@ pub fn update_config(
     }
     if let Some(v) = enrich_musicbrainz {
         cfg.enrich_musicbrainz = v;
+    }
+    if let Some(v) = enrich_itunes {
+        cfg.enrich_itunes = v;
     }
     if let Some(v) = enrich_spotify {
         cfg.enrich_spotify = v;

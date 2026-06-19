@@ -216,6 +216,7 @@ pub struct PublicConfig {
     /// Streaming-platform enrichment toggles + key presence (no secrets exposed).
     pub enrich_deezer: bool,
     pub enrich_musicbrainz: bool,
+    pub enrich_itunes: bool,
     pub enrich_spotify: bool,
     pub enrich_soundcloud: bool,
     pub has_spotify: bool,

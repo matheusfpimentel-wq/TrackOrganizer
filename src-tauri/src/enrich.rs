@@ -36,6 +36,24 @@ async fn mb_first(client: &reqwest::Client, title: &str, artist: &str) -> Option
     value.get("recordings")?.as_array()?.first().cloned()
 }
 
+/// First iTunes (Apple) song match (public API, no auth). Notably this is the
+/// only free source that returns a per-track genre (`primaryGenreName`).
+async fn itunes_first(client: &reqwest::Client, title: &str, artist: &str) -> Option<Value> {
+    let term = format!("{artist} {title}");
+    let resp = client
+        .get("https://itunes.apple.com/search")
+        .query(&[
+            ("term", term.as_str()),
+            ("entity", "song"),
+            ("limit", "1"),
+        ])
+        .send()
+        .await
+        .ok()?;
+    let value: Value = resp.json().await.ok()?;
+    value.get("results")?.as_array()?.first().cloned()
+}
+
 /// Get a Spotify app token (client-credentials flow; no user login).
 async fn spotify_token(client: &reqwest::Client, id: &str, secret: &str) -> Option<String> {
     let resp = client
@@ -194,6 +212,33 @@ pub async fn enrich_tracks(app: AppHandle, tracks: Vec<EnrichInput>) -> Result<V
                     }
                 }
                 e.sources.push("MusicBrainz".into());
+            }
+        }
+
+        if cfg.enrich_itunes {
+            if let Some(it) = itunes_first(&client, &t.title, &t.artist).await {
+                if e.title.is_none() {
+                    e.title = it.get("trackName").and_then(Value::as_str).map(String::from);
+                }
+                if e.artist.is_none() {
+                    e.artist = it.get("artistName").and_then(Value::as_str).map(String::from);
+                }
+                if e.album.is_none() {
+                    e.album = it.get("collectionName").and_then(Value::as_str).map(String::from);
+                }
+                if e.genre.is_none() {
+                    e.genre = it
+                        .get("primaryGenreName")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                }
+                if e.year.is_none() {
+                    e.year = it
+                        .get("releaseDate")
+                        .and_then(Value::as_str)
+                        .and_then(|d| d.chars().take(4).collect::<String>().parse::<i32>().ok());
+                }
+                e.sources.push("iTunes".into());
             }
         }
 

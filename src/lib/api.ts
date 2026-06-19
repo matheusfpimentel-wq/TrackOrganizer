@@ -279,6 +279,7 @@ export interface PublicConfig {
   genreStrict: boolean;
   enrichDeezer: boolean;
   enrichMusicbrainz: boolean;
+  enrichItunes: boolean;
   enrichSpotify: boolean;
   enrichSoundcloud: boolean;
   hasSpotify: boolean;
@@ -296,6 +297,7 @@ export interface ConfigPatch {
   genreStrict?: boolean;
   enrichDeezer?: boolean;
   enrichMusicbrainz?: boolean;
+  enrichItunes?: boolean;
   enrichSpotify?: boolean;
   enrichSoundcloud?: boolean;
   spotifyClientId?: string;
@@ -314,6 +316,7 @@ const DEV_CONFIG: PublicConfig = {
   genreStrict: false,
   enrichDeezer: true,
   enrichMusicbrainz: true,
+  enrichItunes: true,
   enrichSpotify: false,
   enrichSoundcloud: false,
   hasSpotify: false,

@@ -344,6 +344,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     genreStrict: false,
     enrichDeezer: true,
     enrichMusicbrainz: true,
+    enrichItunes: true,
     enrichSpotify: false,
     enrichSoundcloud: false,
     hasSpotify: false,

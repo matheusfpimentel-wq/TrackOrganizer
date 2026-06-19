@@ -29,6 +29,7 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [genreStrict, setGenreStrict] = useState(config.genreStrict);
   const [enrichDeezer, setEnrichDeezer] = useState(config.enrichDeezer);
   const [enrichMusicbrainz, setEnrichMusicbrainz] = useState(config.enrichMusicbrainz);
+  const [enrichItunes, setEnrichItunes] = useState(config.enrichItunes);
   const [enrichSpotify, setEnrichSpotify] = useState(config.enrichSpotify);
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
@@ -48,6 +49,7 @@ export function SettingsDialog({ open, onClose }: Props) {
       setGenreStrict(config.genreStrict);
       setEnrichDeezer(config.enrichDeezer);
       setEnrichMusicbrainz(config.enrichMusicbrainz);
+      setEnrichItunes(config.enrichItunes);
       setEnrichSpotify(config.enrichSpotify);
       setSpotifyClientId("");
       setSpotifyClientSecret("");
@@ -89,6 +91,7 @@ export function SettingsDialog({ open, onClose }: Props) {
         genreStrict,
         enrichDeezer,
         enrichMusicbrainz,
+        enrichItunes,
         enrichSpotify,
       };
       if (spotifyClientId.trim()) {
@@ -313,6 +316,15 @@ export function SettingsDialog({ open, onClose }: Props) {
               className="accent-primary"
             />
             MusicBrainz — confirma <strong>álbum/ano</strong> e nomes canônicos
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichItunes}
+              onChange={(e) => setEnrichItunes(e.target.checked)}
+              className="accent-primary"
+            />
+            iTunes/Apple — <strong>gênero</strong> por faixa + álbum/ano (sem chave)
           </label>
           <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
             <input
