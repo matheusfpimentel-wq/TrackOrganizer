@@ -133,10 +133,8 @@ export function TrackGrid() {
   const genres = useLibraryStore((s) => s.config.genres);
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
-  const setHealthOpen = useLibraryStore((s) => s.setHealthOpen);
   // View state lives in the store (shared with the "Visualizar" menu).
   const groupBy = useLibraryStore((s) => s.groupBy);
-  const setGroupBy = useLibraryStore((s) => s.setGroupBy);
   const colFiltersOpen = useLibraryStore((s) => s.colFiltersOpen);
   const setColFiltersOpen = useLibraryStore((s) => s.setColFiltersOpen);
   const hiddenCols = useLibraryStore((s) => s.hiddenCols);
@@ -930,30 +928,10 @@ export function TrackGrid() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
+      <div className="flex items-center gap-3 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
         <span className="text-muted-foreground">
           {visible.length} de {rows.length}
         </span>
-        <button
-          onClick={() => setColFiltersOpen(!colFiltersOpen)}
-          className={cn(
-            "rounded border px-2 py-0.5 transition-colors",
-            colFiltersOpen || hasColFilters
-              ? "border-primary bg-primary/15 text-foreground"
-              : "border-border text-muted-foreground hover:bg-accent",
-          )}
-          title="Filtros por coluna (faixa de BPM, gênero, tom, …)"
-        >
-          Filtros por coluna{hasColFilters ? " (ativos)" : ""}
-        </button>
-        {hasColFilters && (
-          <button
-            onClick={() => setColFilters({})}
-            className="text-muted-foreground underline hover:text-foreground"
-          >
-            limpar
-          </button>
-        )}
         <div className="relative">
           <button
             onClick={() => setShowViews((v) => !v)}
@@ -998,55 +976,31 @@ export function TrackGrid() {
             </>
           )}
         </div>
-        <select
-          value={groupBy}
-          onChange={(e) => {
-            setGroupBy(e.target.value as GroupBy);
-            setCollapsedGroups(new Set());
-          }}
-          className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground"
-          title="Agrupar a grade"
-        >
-          <option value="none">Sem agrupar</option>
-          <option value="genre">Agrupar: Gênero</option>
-          <option value="key">Agrupar: Tom</option>
-          <option value="bpm">Agrupar: BPM</option>
-        </select>
+        {hasColFilters && (
+          <button
+            onClick={() => setColFilters({})}
+            className="text-muted-foreground underline hover:text-foreground"
+          >
+            limpar filtros
+          </button>
+        )}
         {groupBy !== "none" && (
-          <>
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <span className="text-muted-foreground/60">·</span>
             <button
               onClick={() =>
                 setCollapsedGroups(
                   new Set(items.filter((i) => i.type === "header").map((i) => (i as { gkey: string }).gkey)),
                 )
               }
-              className="text-muted-foreground underline hover:text-foreground"
+              className="underline hover:text-foreground"
             >
               recolher
             </button>
-            <button
-              onClick={() => setCollapsedGroups(new Set())}
-              className="text-muted-foreground underline hover:text-foreground"
-            >
+            <button onClick={() => setCollapsedGroups(new Set())} className="underline hover:text-foreground">
               expandir
             </button>
-          </>
-        )}
-        <button
-          onClick={() => setHealthOpen(true)}
-          className="rounded border border-border px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
-          title="Saúde da biblioteca"
-        >
-          Saúde
-        </button>
-        {hiddenCols.length > 0 && (
-          <button
-            onClick={() => showAllCols()}
-            className="ml-auto text-muted-foreground underline hover:text-foreground"
-            title="Mostrar todas as colunas"
-          >
-            mostrar colunas ({hiddenCols.length} ocultas)
-          </button>
+          </span>
         )}
       </div>
       <div
