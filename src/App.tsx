@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Toolbar } from "@/components/Toolbar";
+import { MenuBar } from "@/components/MenuBar";
 import { TrackGrid } from "@/components/TrackGrid";
 import { StatusBar } from "@/components/StatusBar";
 import { SettingsDialog } from "@/components/SettingsDialog";
@@ -23,14 +23,6 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const loadConfig = useLibraryStore((s) => s.loadConfig);
   const setWriteConfirmOpen = useLibraryStore((s) => s.setWriteConfirmOpen);
-  const mode = useLibraryStore((s) => s.mode);
-  const setMode = useLibraryStore((s) => s.setMode);
-
-  const MODES = [
-    { key: "library", label: "Biblioteca" },
-    { key: "analysis", label: "Análise" },
-    { key: "export", label: "Export" },
-  ] as const;
 
   useEffect(() => {
     void loadConfig();
@@ -64,34 +56,11 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center gap-3 border-b border-border px-3 py-2">
-        <span className="text-sm font-semibold tracking-tight">Tracklistr</span>
-        <div className="flex items-center gap-1">
-          {MODES.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => setMode(m.key)}
-              className={
-                "rounded-md px-3 py-1 text-sm transition-colors " +
-                (mode === m.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground")
-              }
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => setPaletteOpen(true)}
-          className="ml-auto flex items-center gap-2 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          title="Paleta de comandos"
-        >
-          <span>Comandos</span>
-          <kbd className="rounded bg-muted px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
-        </button>
-      </header>
-      <Toolbar onOpenSettings={() => setSettingsOpen(true)} onOpenFind={() => setFindOpen(true)} />
+      <MenuBar
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenFind={() => setFindOpen(true)}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
       <main className="min-h-0 flex-1">
         <TrackGrid />
       </main>
