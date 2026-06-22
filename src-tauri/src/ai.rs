@@ -53,8 +53,10 @@ lista se nenhum encaixar: {list}.\n"
     if wants("title") {
         rules.push_str(&format!(
             "\nTÍTULO (padronização):\n\
-- Formato OBRIGATÓRIO: \"Título - Artista (Versão)\". Ex.: \"Tití Me Preguntó - Bad Bunny (Club Edit)\".\n\
-- Mova Remix/Edit/Bootleg/Mashup/VIP/feat. para dentro dos parênteses (Versão).\n\
+- O campo `title` é APENAS o nome da música. NUNCA inclua o artista no título.\n\
+- Mantenha a versão entre parênteses no FIM quando houver: Remix/Edit/Bootleg/Mashup/VIP/Club Edit. \
+Ex.: \"Tití Me Preguntó (Club Edit)\", \"Safaera (House Bootleg)\".\n\
+- Tire \"feat.\"/convidados do título (o artista vai no campo `artist`).\n\
 - Remova lixo promocional: [Free Download], nomes de blog, URLs, \"Official Video\", \
 extensões soltas, espaços duplos.\n\
 - Respeite o LIMITE de {char_limit} caracteres no título final (corte sem partir palavra).\n",

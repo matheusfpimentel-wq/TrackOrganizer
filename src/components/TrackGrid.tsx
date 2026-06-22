@@ -12,11 +12,10 @@ import { windowRange } from "@/lib/virtual";
 import {
   loadColWidths,
   saveColWidths,
-  loadDensity,
-  saveDensity,
   loadSavedViews,
   saveSavedViews,
-  type Density,
+  loadHiddenCols,
+  saveHiddenCols,
   type SavedView,
 } from "@/lib/prefs";
 
@@ -141,8 +140,9 @@ export function TrackGrid() {
   const setHealthOpen = useLibraryStore((s) => s.setHealthOpen);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
+  const [colMenu, setColMenu] = useState<{ x: number; y: number } | null>(null);
   const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
-  const [density, setDensity] = useState<Density>(() => loadDensity());
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => new Set(loadHiddenCols()));
   const [showColFilters, setShowColFilters] = useState(false);
   // Per-column quick filters (key = TagKey or "fileName"); empty = no filter.
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
@@ -151,8 +151,19 @@ export function TrackGrid() {
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   useEffect(() => {
-    saveDensity(density);
-  }, [density]);
+    saveHiddenCols([...hiddenCols]);
+  }, [hiddenCols]);
+
+  // Columns actually shown (user can hide some via the header right-click menu).
+  const visibleCols = useMemo(() => COLUMNS.filter((c) => !hiddenCols.has(c.key)), [hiddenCols]);
+  const toggleCol = useCallback((key: string) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const saveCurrentView = useCallback(() => {
     const name = window.prompt("Nome da view (Smart Crate):")?.trim();
@@ -187,7 +198,7 @@ export function TrackGrid() {
       return next;
     });
   }, []);
-  const cellPad = density === "comfortable" ? "px-2 py-1.5" : "px-2 py-1";
+  const cellPad = "px-2 py-1";
   const hasColFilters = Object.values(colFilters).some((v) => v.trim() !== "");
 
   const analysis = useMemo(() => analyze(rows), [rows]);
@@ -306,14 +317,14 @@ export function TrackGrid() {
   useEffect(() => {
     if (active || orderedRows.length === 0) return;
     const first = orderedRows[0];
-    const firstCol = COLUMNS[0];
+    const firstCol = visibleCols[0];
     if (first && firstCol) {
       const cell = { rowId: first.id, colKey: firstCol.key };
       setActive(cell);
       setAnchor(cell);
       containerRef.current?.focus({ preventScroll: true });
     }
-  }, [active, orderedRows, setAnchor]);
+  }, [active, orderedRows, setAnchor, visibleCols]);
 
   // Resizable, persisted column widths.
   const [widths, setWidths] = useState<Record<string, number>>(() => loadColWidths(DEFAULT_WIDTHS));
@@ -354,7 +365,7 @@ export function TrackGrid() {
   const win = virtualize
     ? windowRange(scrollTop, viewportH, rowH, items.length)
     : { start: 0, end: items.length, topPad: 0, bottomPad: 0 };
-  const colCount = COLUMNS.length + 4;
+  const colCount = visibleCols.length + 4;
   const measureRow = (el: HTMLTableRowElement | null) => {
     if (el) {
       const h = el.getBoundingClientRect().height;
@@ -393,25 +404,47 @@ export function TrackGrid() {
 
   const colIndexByKey = useMemo(() => {
     const m = new Map<TagKey, number>();
-    COLUMNS.forEach((c, i) => m.set(c.key, i));
+    visibleCols.forEach((c, i) => m.set(c.key, i));
     return m;
-  }, []);
+  }, [visibleCols]);
 
-  // Scroll the container so a given row is visible (works with virtualization).
-  const scrollRowIntoView = useCallback(
-    (rowId: string) => {
+  // Scroll the container so a given cell is visible — vertically (works with
+  // virtualization) and horizontally (keeping clear of the sticky # column).
+  const scrollCellIntoView = useCallback(
+    (rowId: string, colKey?: TagKey) => {
       const el = containerRef.current;
+      if (!el) return;
       const idx = itemIndexById.get(rowId);
-      if (!el || idx === undefined) return;
-      const top = idx * rowH;
-      const headerH = 60; // sticky header (+ filter row) approx
-      if (top - headerH < el.scrollTop) {
-        el.scrollTop = Math.max(0, top - headerH);
-      } else if (top + rowH > el.scrollTop + el.clientHeight) {
-        el.scrollTop = top + rowH - el.clientHeight;
+      if (idx !== undefined) {
+        const top = idx * rowH;
+        const headerH = 60; // sticky header (+ filter row) approx
+        if (top - headerH < el.scrollTop) {
+          el.scrollTop = Math.max(0, top - headerH);
+        } else if (top + rowH > el.scrollTop + el.clientHeight) {
+          el.scrollTop = top + rowH - el.clientHeight;
+        }
+      }
+      if (colKey) {
+        const ci = colIndexByKey.get(colKey);
+        if (ci !== undefined) {
+          const LEAD = 48 + 36; // # column (48) + artwork (36)
+          const STICKY = 48; // sticky # column overlays the left edge
+          let left = LEAD;
+          for (let i = 0; i < ci; i++) {
+            const c = visibleCols[i];
+            if (c) left += widths[c.key] ?? c.width;
+          }
+          const col = visibleCols[ci];
+          const w = col ? (widths[col.key] ?? col.width) : 0;
+          if (left - STICKY < el.scrollLeft) {
+            el.scrollLeft = Math.max(0, left - STICKY);
+          } else if (left + w > el.scrollLeft + el.clientWidth) {
+            el.scrollLeft = left + w - el.clientWidth;
+          }
+        }
       }
     },
-    [itemIndexById, rowH],
+    [itemIndexById, rowH, colIndexByKey, visibleCols, widths],
   );
 
   const buildRange = useCallback(
@@ -423,14 +456,14 @@ export function TrackGrid() {
         const row = orderedRows[r];
         if (!row) continue;
         for (let c = cLo; c <= cHi; c++) {
-          const col = COLUMNS[c];
+          const col = visibleCols[c];
           if (!col) continue;
           keys.add(cellKey(row.id, col.key));
         }
       }
       return keys;
     },
-    [orderedRows],
+    [orderedRows, visibleCols],
   );
 
   const onCellMouseDown = useCallback(
@@ -483,8 +516,9 @@ export function TrackGrid() {
       }
       setSelection(buildRange(aRow, aCol, rowIndex, colIndex));
       setActive({ rowId, colKey });
+      scrollCellIntoView(rowId, colKey);
     },
-    [anchor, buildRange, colIndexByKey, rowIndexById, setSelection],
+    [anchor, buildRange, colIndexByKey, rowIndexById, setSelection, scrollCellIntoView],
   );
 
   const selectColumn = useCallback(
@@ -503,18 +537,47 @@ export function TrackGrid() {
   );
 
   const selectRow = useCallback(
-    (row: TrackRow) => {
-      const keys = new Set<string>();
-      for (const col of COLUMNS) {
-        keys.add(cellKey(row.id, col.key));
+    (row: TrackRow, e?: MouseEvent) => {
+      const firstCol = visibleCols[0];
+      // Ctrl/Cmd: toggle this row's cells in/out of the current selection.
+      if (e && (e.ctrlKey || e.metaKey)) {
+        const next = new Set(selection);
+        const rowKeys = visibleCols.map((col) => cellKey(row.id, col.key));
+        const allIn = rowKeys.every((k) => next.has(k));
+        for (const k of rowKeys) {
+          if (allIn) next.delete(k);
+          else next.add(k);
+        }
+        setSelection(next);
+        const cell = firstCol ? { rowId: row.id, colKey: firstCol.key } : null;
+        setAnchor(cell);
+        setActive(cell);
+        return;
       }
+      // Shift: continuous range of full rows from the anchor row to this one.
+      if (e && e.shiftKey && anchor) {
+        const aR = rowIndexById.get(anchor.rowId);
+        const bR = rowIndexById.get(row.id);
+        if (aR !== undefined && bR !== undefined) {
+          const [lo, hi] = aR <= bR ? [aR, bR] : [bR, aR];
+          const keys = new Set<string>();
+          for (let r = lo; r <= hi; r++) {
+            const rr = orderedRows[r];
+            if (rr) for (const col of visibleCols) keys.add(cellKey(rr.id, col.key));
+          }
+          setSelection(keys);
+          setActive(firstCol ? { rowId: row.id, colKey: firstCol.key } : null);
+          return;
+        }
+      }
+      const keys = new Set<string>();
+      for (const col of visibleCols) keys.add(cellKey(row.id, col.key));
       setSelection(keys);
-      const firstCol = COLUMNS[0];
       const cell = firstCol ? { rowId: row.id, colKey: firstCol.key } : null;
       setAnchor(cell);
       setActive(cell);
     },
-    [setAnchor, setSelection],
+    [setAnchor, setSelection, visibleCols, selection, anchor, rowIndexById, orderedRows],
   );
 
   const beginEdit = useCallback((row: TrackRow, colKey: TagKey) => {
@@ -552,13 +615,13 @@ export function TrackGrid() {
       if (!row) continue;
       const vals: string[] = [];
       for (let c = minC; c <= maxC; c++) {
-        const col = COLUMNS[c];
+        const col = visibleCols[c];
         if (col) vals.push(displayValue(row.edited[col.key]));
       }
       lines.push(vals.join("\t"));
     }
     void navigator.clipboard.writeText(lines.join("\n"));
-  }, [selection, orderedRows, rowIndexById, colIndexByKey]);
+  }, [selection, orderedRows, rowIndexById, colIndexByKey, visibleCols]);
 
   // Paste TSV starting at the anchor; a single value fills the whole selection.
   const pasteClipboard = useCallback(async () => {
@@ -586,11 +649,11 @@ export function TrackGrid() {
       const row = orderedRows[aRow + i];
       if (!row) return;
       cols.forEach((val, j) => {
-        const col = COLUMNS[aCol + j];
+        const col = visibleCols[aCol + j];
         if (col) setCell(row.id, col.key, val);
       });
     });
-  }, [anchor, selection, orderedRows, rowIndexById, colIndexByKey, setCell]);
+  }, [anchor, selection, orderedRows, rowIndexById, colIndexByKey, setCell, visibleCols]);
 
   // Excel-style fill-down: the top row of the selection rectangle seeds the
   // cells below it (per column), applied as one undo step.
@@ -613,7 +676,7 @@ export function TrackGrid() {
     if (maxR < 0 || maxR === minR) return; // need at least two rows
     const updates: { rowId: string; key: TagKey; raw: string }[] = [];
     for (let c = minC; c <= maxC; c++) {
-      const col = COLUMNS[c];
+      const col = visibleCols[c];
       const src = orderedRows[minR];
       if (!col || !src) continue;
       const val = displayValue(src.edited[col.key]);
@@ -623,20 +686,20 @@ export function TrackGrid() {
       }
     }
     setCells(updates);
-  }, [selection, orderedRows, rowIndexById, colIndexByKey, setCells]);
+  }, [selection, orderedRows, rowIndexById, colIndexByKey, setCells, visibleCols]);
 
   const selectAllVisible = useCallback(() => {
     const keys = new Set<string>();
     for (const row of orderedRows) {
-      for (const col of COLUMNS) keys.add(cellKey(row.id, col.key));
+      for (const col of visibleCols) keys.add(cellKey(row.id, col.key));
     }
     setSelection(keys);
     const first = orderedRows[0];
-    const firstCol = COLUMNS[0];
+    const firstCol = visibleCols[0];
     const cell = first && firstCol ? { rowId: first.id, colKey: firstCol.key } : null;
     setAnchor(cell);
     setActive(cell);
-  }, [orderedRows, setSelection, setAnchor]);
+  }, [orderedRows, setSelection, setAnchor, visibleCols]);
 
   const onInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -652,7 +715,7 @@ export function TrackGrid() {
             setSelection(new Set([cellKey(next.id, editing.colKey)]));
             setAnchor(cell);
             setActive(cell);
-            scrollRowIntoView(next.id);
+            scrollCellIntoView(next.id, editing.colKey);
           }
         }
       } else if (e.key === "Tab") {
@@ -663,7 +726,7 @@ export function TrackGrid() {
           const r = rowIndexById.get(editing.rowId);
           const c = colIndexByKey.get(editing.colKey);
           if (r !== undefined && c !== undefined) {
-            const col = COLUMNS[e.shiftKey ? c - 1 : c + 1];
+            const col = visibleCols[e.shiftKey ? c - 1 : c + 1];
             const row = orderedRows[r];
             if (col && row) {
               const cell = { rowId: row.id, colKey: col.key };
@@ -678,7 +741,7 @@ export function TrackGrid() {
         setEditing(null);
       }
     },
-    [commitEdit, editing, colIndexByKey, rowIndexById, setAnchor, setSelection, orderedRows, scrollRowIntoView],
+    [commitEdit, editing, colIndexByKey, rowIndexById, setAnchor, setSelection, orderedRows, scrollCellIntoView, visibleCols],
   );
 
   const moveActive = useCallback(
@@ -686,7 +749,7 @@ export function TrackGrid() {
       const cur = active ?? anchor;
       if (!cur) {
         const first = orderedRows[0];
-        const firstCol = COLUMNS[0];
+        const firstCol = visibleCols[0];
         if (first && firstCol) {
           const cell = { rowId: first.id, colKey: firstCol.key };
           setSelection(new Set([cellKey(first.id, firstCol.key)]));
@@ -699,9 +762,9 @@ export function TrackGrid() {
       const c = colIndexByKey.get(cur.colKey);
       if (r === undefined || c === undefined) return;
       const nr = Math.max(0, Math.min(orderedRows.length - 1, r + dr));
-      const nc = Math.max(0, Math.min(COLUMNS.length - 1, c + dc));
+      const nc = Math.max(0, Math.min(visibleCols.length - 1, c + dc));
       const row = orderedRows[nr];
-      const col = COLUMNS[nc];
+      const col = visibleCols[nc];
       if (!row || !col) return;
       const cell = { rowId: row.id, colKey: col.key };
       setActive(cell);
@@ -715,9 +778,9 @@ export function TrackGrid() {
         setAnchor(cell);
         setSelection(new Set([cellKey(row.id, col.key)]));
       }
-      scrollRowIntoView(row.id);
+      scrollCellIntoView(row.id, col.key);
     },
-    [active, anchor, buildRange, colIndexByKey, orderedRows, rowIndexById, scrollRowIntoView, setAnchor, setSelection],
+    [active, anchor, buildRange, colIndexByKey, orderedRows, rowIndexById, scrollCellIntoView, setAnchor, setSelection, visibleCols],
   );
 
   const onGridKeyDown = useCallback(
@@ -985,21 +1048,15 @@ export function TrackGrid() {
         >
           Saúde
         </button>
-        <div className="ml-auto flex items-center gap-1 text-muted-foreground">
-          <span>Densidade</span>
-          {(["compact", "comfortable"] as const).map((d) => (
-            <button
-              key={d}
-              onClick={() => setDensity(d)}
-              className={cn(
-                "rounded px-1.5 py-0.5 transition-colors",
-                density === d ? "bg-accent text-foreground ring-1 ring-border" : "hover:bg-accent",
-              )}
-            >
-              {d === "compact" ? "Compacta" : "Confortável"}
-            </button>
-          ))}
-        </div>
+        {hiddenCols.size > 0 && (
+          <button
+            onClick={() => setHiddenCols(new Set())}
+            className="ml-auto text-muted-foreground underline hover:text-foreground"
+            title="Mostrar todas as colunas"
+          >
+            mostrar colunas ({hiddenCols.size} ocultas)
+          </button>
+        )}
       </div>
       <div
         ref={containerRef}
@@ -1011,25 +1068,31 @@ export function TrackGrid() {
         }}
         className="min-h-0 flex-1 overflow-auto outline-none"
       >
-      <table className="w-max select-none border-collapse text-sm">
+      <table className="w-max table-fixed select-none border-collapse text-sm">
         <thead className="sticky top-0 z-10 bg-muted">
           <tr>
             <th className="sticky left-0 z-20 w-12 border border-border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
               #
             </th>
             <th className="w-9 border border-border bg-muted px-1 py-1.5 text-xs text-muted-foreground" aria-label="Capa" />
-            {COLUMNS.map((col) => {
+            {visibleCols.map((col) => {
               const w = widths[col.key] ?? col.width;
               return (
                 <th
                   key={col.key}
-                  style={{ width: w, minWidth: w }}
+                  style={{ width: w, minWidth: w, maxWidth: w }}
                   onClick={(e) => (e.altKey ? selectColumn(col) : toggleSort(col.key))}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setColMenu({ x: e.clientX, y: e.clientY });
+                  }}
                   className="relative cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
-                  title="Clique para ordenar · Alt+clique para selecionar a coluna"
+                  title="Clique: ordenar · Alt+clique: selecionar coluna · Clique-direito: mostrar/esconder colunas"
                 >
-                  {col.label}
-                  {sort?.col === col.key && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+                  <span className="block truncate pr-2">
+                    {col.label}
+                    {sort?.col === col.key && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+                  </span>
                   <span
                     onMouseDown={(e) => startResize(e, col.key)}
                     onClick={(e) => e.stopPropagation()}
@@ -1041,6 +1104,7 @@ export function TrackGrid() {
             })}
             <th
               onClick={() => toggleSort("duration")}
+              style={{ width: 80, minWidth: 80, maxWidth: 80 }}
               className="cursor-pointer select-none border border-border px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground hover:text-foreground"
               title="Clique para ordenar por duração"
             >
@@ -1049,6 +1113,7 @@ export function TrackGrid() {
             </th>
             <th
               onClick={() => toggleSort("fileName")}
+              style={{ width: 320, minWidth: 320, maxWidth: 320 }}
               className="cursor-pointer select-none border border-border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
               title="Clique para ordenar por arquivo"
             >
@@ -1060,7 +1125,7 @@ export function TrackGrid() {
             <tr>
               <th className="sticky left-0 z-20 border border-border bg-muted/70 p-0.5" />
               <th className="border border-border bg-muted/70 p-0.5" />
-              {COLUMNS.map((col) => (
+              {visibleCols.map((col) => (
                 <th key={col.key} className="border border-border bg-muted/70 p-0.5">
                   <input
                     value={colFilters[col.key] ?? ""}
@@ -1124,7 +1189,7 @@ export function TrackGrid() {
               }}
             >
               <td
-                onClick={() => selectRow(row)}
+                onClick={(e) => selectRow(row, e)}
                 className="sticky left-0 z-10 cursor-pointer select-none border border-border bg-muted px-1 py-1 text-center text-xs text-muted-foreground"
                 title={rowTitle}
               >
@@ -1150,7 +1215,7 @@ export function TrackGrid() {
                   <span className="text-muted-foreground/40">{row.hasArtwork ? "…" : "♪"}</span>
                 )}
               </td>
-              {COLUMNS.map((col) => {
+              {visibleCols.map((col) => {
                 const key = cellKey(row.id, col.key);
                 const selected = selection.has(key);
                 const isActive = active?.rowId === row.id && active.colKey === col.key;
@@ -1158,10 +1223,13 @@ export function TrackGrid() {
                 const pending = row.suggested?.[col.key] !== undefined;
                 const isEditing = editing?.rowId === row.id && editing.colKey === col.key;
                 const value = row.edited[col.key];
+                // Pending cells preview the AI's proposed value (not the old one).
+                const sugVal = pending ? row.suggested?.[col.key] : undefined;
+                const shown = sugVal !== undefined ? sugVal : value;
                 const keyColor =
                   col.key === "key" && typeof value === "string" ? camelotColor(value) : null;
                 const w = widths[col.key] ?? col.width;
-                const cellStyle: CSSProperties = { width: w, minWidth: w };
+                const cellStyle: CSSProperties = { width: w, minWidth: w, maxWidth: w };
                 if (keyColor && !selected && !isEditing) {
                   cellStyle.backgroundColor = keyColor;
                 }
@@ -1182,7 +1250,11 @@ export function TrackGrid() {
                       dirty && !selected && !pending && !keyColor && "bg-dirty/10",
                       isActive && !isEditing && "ring-2 ring-inset ring-primary",
                     )}
-                    title={pending ? `IA sugere: ${displayValue(row.suggested?.[col.key] ?? null)}` : undefined}
+                    title={
+                      pending
+                        ? `Atual: ${displayValue(value)} → IA sugere: ${displayValue(sugVal ?? null)}`
+                        : undefined
+                    }
                   >
                     {isEditing ? (
                       <input
@@ -1198,7 +1270,7 @@ export function TrackGrid() {
                     ) : col.key === "energy" ? (
                       <span className="flex gap-0.5">
                         {[1, 2, 3, 4, 5].map((n) => {
-                          const filled = typeof value === "number" && value >= n;
+                          const filled = typeof shown === "number" && shown >= n;
                           return (
                             <button
                               key={n}
@@ -1217,8 +1289,13 @@ export function TrackGrid() {
                         })}
                       </span>
                     ) : (
-                      <span className={cn("block truncate", dirty && "text-dirty")}>
-                        {displayValue(value)}
+                      <span
+                        className={cn(
+                          "block truncate",
+                          pending ? "italic text-suggested" : dirty && "text-dirty",
+                        )}
+                      >
+                        {displayValue(shown)}
                       </span>
                     )}
                     {pending && !isEditing && (
@@ -1279,6 +1356,47 @@ export function TrackGrid() {
             <option key={g} value={g} />
           ))}
         </datalist>
+      )}
+
+      {colMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onMouseDown={() => setColMenu(null)} />
+          <div
+            className="fixed z-50 w-56 overflow-hidden rounded-md border border-border bg-background py-1 text-sm shadow-xl"
+            style={{ left: colMenu.x, top: colMenu.y }}
+          >
+            <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              Mostrar/esconder colunas
+            </div>
+            {COLUMNS.map((col) => {
+              const visibleNow = !hiddenCols.has(col.key);
+              const last = visibleCols.length === 1 && visibleNow;
+              return (
+                <button
+                  key={col.key}
+                  disabled={last}
+                  onClick={() => toggleCol(col.key)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+                  title={last ? "Mantenha ao menos uma coluna" : undefined}
+                >
+                  <span className="w-3 text-primary">{visibleNow ? "✓" : ""}</span>
+                  {col.label}
+                </button>
+              );
+            })}
+            <div className="my-1 h-px bg-border" />
+            <button
+              className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
+              disabled={hiddenCols.size === 0}
+              onClick={() => {
+                setHiddenCols(new Set());
+                setColMenu(null);
+              }}
+            >
+              Mostrar todas
+            </button>
+          </div>
+        </>
       )}
 
       {menu && (

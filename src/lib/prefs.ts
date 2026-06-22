@@ -69,6 +69,29 @@ export function saveView(view: ViewPrefs): void {
   }
 }
 
+const HIDDEN_COLS_KEY = "tracklistr.hiddenCols";
+
+export function loadHiddenCols(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_COLS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (Array.isArray(v)) return v as string[];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function saveHiddenCols(keys: string[]): void {
+  try {
+    localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(keys));
+  } catch {
+    // ignore
+  }
+}
+
 const VIEWS_KEY = "tracklistr.savedViews";
 
 /** A named, reusable view (Smart Crate): search + lens + sort + column filters. */
