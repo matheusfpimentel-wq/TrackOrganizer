@@ -14,15 +14,13 @@ import {
   saveColWidths,
   loadSavedViews,
   saveSavedViews,
-  loadHiddenCols,
-  saveHiddenCols,
   type SavedView,
 } from "@/lib/prefs";
 
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
 );
-import { COLUMNS, type ColumnDef, type TagKey, type TrackRow } from "@/types/track";
+import { COLUMNS, type ColumnDef, type GroupBy, type TagKey, type TrackRow } from "@/types/track";
 import { camelotColor, displayValue, formatDuration } from "@/lib/format";
 import { cellKey, cn } from "@/lib/utils";
 import { revealInFiles } from "@/lib/api";
@@ -91,8 +89,6 @@ function matchCol(value: string | number | null, expr: string, isNumber: boolean
   return displayValue(value).toLowerCase().includes(q.toLowerCase());
 }
 
-type GroupBy = "none" | "genre" | "key" | "bpm";
-
 /** Group key (for sorting/collapse) + human label for a row under `by`. */
 function groupOf(row: TrackRow, by: GroupBy): { key: string; label: string } {
   if (by === "genre") {
@@ -138,32 +134,27 @@ export function TrackGrid() {
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
   const setHealthOpen = useLibraryStore((s) => s.setHealthOpen);
+  // View state lives in the store (shared with the "Visualizar" menu).
+  const groupBy = useLibraryStore((s) => s.groupBy);
+  const setGroupBy = useLibraryStore((s) => s.setGroupBy);
+  const colFiltersOpen = useLibraryStore((s) => s.colFiltersOpen);
+  const setColFiltersOpen = useLibraryStore((s) => s.setColFiltersOpen);
+  const hiddenCols = useLibraryStore((s) => s.hiddenCols);
+  const toggleHiddenCol = useLibraryStore((s) => s.toggleHiddenCol);
+  const showAllCols = useLibraryStore((s) => s.showAllCols);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
   const [colMenu, setColMenu] = useState<{ x: number; y: number } | null>(null);
   const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
-  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => new Set(loadHiddenCols()));
-  const [showColFilters, setShowColFilters] = useState(false);
   // Per-column quick filters (key = TagKey or "fileName"); empty = no filter.
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
   const [showViews, setShowViews] = useState(false);
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    saveHiddenCols([...hiddenCols]);
-  }, [hiddenCols]);
 
+  const hiddenSet = useMemo(() => new Set(hiddenCols), [hiddenCols]);
   // Columns actually shown (user can hide some via the header right-click menu).
-  const visibleCols = useMemo(() => COLUMNS.filter((c) => !hiddenCols.has(c.key)), [hiddenCols]);
-  const toggleCol = useCallback((key: string) => {
-    setHiddenCols((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const visibleCols = useMemo(() => COLUMNS.filter((c) => !hiddenSet.has(c.key)), [hiddenSet]);
 
   const saveCurrentView = useCallback(() => {
     const name = window.prompt("Nome da view (Smart Crate):")?.trim();
@@ -184,11 +175,11 @@ export function TrackGrid() {
       setSort(v.sort as { col: SortKey; dir: "asc" | "desc" } | null);
       setColFilters(v.colFilters ?? {});
       if (v.colFilters && Object.values(v.colFilters).some((x) => x.trim() !== "")) {
-        setShowColFilters(true);
+        setColFiltersOpen(true);
       }
       setShowViews(false);
     },
-    [setFilter, setLens, lens],
+    [setFilter, setLens, lens, setColFiltersOpen],
   );
 
   const deleteView = useCallback((name: string) => {
@@ -944,10 +935,10 @@ export function TrackGrid() {
           {visible.length} de {rows.length}
         </span>
         <button
-          onClick={() => setShowColFilters((v) => !v)}
+          onClick={() => setColFiltersOpen(!colFiltersOpen)}
           className={cn(
             "rounded border px-2 py-0.5 transition-colors",
-            showColFilters || hasColFilters
+            colFiltersOpen || hasColFilters
               ? "border-primary bg-primary/15 text-foreground"
               : "border-border text-muted-foreground hover:bg-accent",
           )}
@@ -1048,13 +1039,13 @@ export function TrackGrid() {
         >
           Saúde
         </button>
-        {hiddenCols.size > 0 && (
+        {hiddenCols.length > 0 && (
           <button
-            onClick={() => setHiddenCols(new Set())}
+            onClick={() => showAllCols()}
             className="ml-auto text-muted-foreground underline hover:text-foreground"
             title="Mostrar todas as colunas"
           >
-            mostrar colunas ({hiddenCols.size} ocultas)
+            mostrar colunas ({hiddenCols.length} ocultas)
           </button>
         )}
       </div>
@@ -1121,7 +1112,7 @@ export function TrackGrid() {
               {sort?.col === "fileName" && <span className="ml-1">{sort.dir === "asc" ? "▲" : "▼"}</span>}
             </th>
           </tr>
-          {showColFilters && (
+          {colFiltersOpen && (
             <tr>
               <th className="sticky left-0 z-20 border border-border bg-muted/70 p-0.5" />
               <th className="border border-border bg-muted/70 p-0.5" />
@@ -1369,13 +1360,13 @@ export function TrackGrid() {
               Mostrar/esconder colunas
             </div>
             {COLUMNS.map((col) => {
-              const visibleNow = !hiddenCols.has(col.key);
+              const visibleNow = !hiddenSet.has(col.key);
               const last = visibleCols.length === 1 && visibleNow;
               return (
                 <button
                   key={col.key}
                   disabled={last}
-                  onClick={() => toggleCol(col.key)}
+                  onClick={() => toggleHiddenCol(col.key)}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
                   title={last ? "Mantenha ao menos uma coluna" : undefined}
                 >
@@ -1387,9 +1378,9 @@ export function TrackGrid() {
             <div className="my-1 h-px bg-border" />
             <button
               className="block w-full px-3 py-1.5 text-left hover:bg-accent disabled:opacity-40"
-              disabled={hiddenCols.size === 0}
+              disabled={hiddenCols.length === 0}
               onClick={() => {
-                setHiddenCols(new Set());
+                showAllCols();
                 setColMenu(null);
               }}
             >

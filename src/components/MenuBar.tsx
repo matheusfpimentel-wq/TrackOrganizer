@@ -4,6 +4,7 @@ import { analyze, selectVisible, useLibraryStore } from "@/store/useLibraryStore
 import { downloadText, rowsToCsv, rowsToTxt } from "@/lib/export";
 import { saveTextFile } from "@/lib/api";
 import { toRekordboxXml } from "@/lib/setlistExport";
+import { COLUMNS, type GroupBy } from "@/types/track";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -17,6 +18,8 @@ interface Item {
   onClick: () => void;
   disabled?: boolean;
   hint?: string;
+  /** Shows a leading ✓ when true (for toggles / radio choices). */
+  checked?: boolean;
 }
 
 /**
@@ -59,6 +62,13 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
   const detectCuesForSelection = useLibraryStore((st) => st.detectCuesForSelection);
   const setHealthOpen = useLibraryStore((st) => st.setHealthOpen);
   const cuesByRow = useLibraryStore((st) => st.cuesByRow);
+  const groupBy = useLibraryStore((st) => st.groupBy);
+  const setGroupBy = useLibraryStore((st) => st.setGroupBy);
+  const colFiltersOpen = useLibraryStore((st) => st.colFiltersOpen);
+  const setColFiltersOpen = useLibraryStore((st) => st.setColFiltersOpen);
+  const hiddenCols = useLibraryStore((st) => st.hiddenCols);
+  const toggleHiddenCol = useLibraryStore((st) => st.toggleHiddenCol);
+  const showAllCols = useLibraryStore((st) => st.showAllCols);
 
   const [open, setOpen] = useState<string | null>(null);
 
@@ -132,6 +142,38 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
       ],
     },
     {
+      id: "visualizar",
+      label: "Visualizar",
+      items: [
+        { label: "Filtros por coluna", onClick: () => setColFiltersOpen(!colFiltersOpen), checked: colFiltersOpen },
+        "sep",
+        ...(
+          [
+            ["none", "Não agrupar"],
+            ["genre", "Agrupar: Gênero"],
+            ["key", "Agrupar: Tom"],
+            ["bpm", "Agrupar: BPM"],
+          ] as [GroupBy, string][]
+        ).map(([g, label]) => ({
+          label,
+          onClick: () => setGroupBy(g),
+          checked: groupBy === g,
+        })),
+        "sep",
+        ...COLUMNS.map((col) => {
+          const visibleNow = !hiddenCols.includes(col.key);
+          const last = hiddenCols.length === COLUMNS.length - 1 && visibleNow;
+          return {
+            label: `Coluna: ${col.label}`,
+            onClick: () => toggleHiddenCol(col.key),
+            checked: visibleNow,
+            disabled: last,
+          };
+        }),
+        { label: "Mostrar todas as colunas", onClick: () => showAllCols(), disabled: hiddenCols.length === 0 },
+      ],
+    },
+    {
       id: "ia",
       label: "IA",
       items: [
@@ -188,7 +230,12 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
                       onClick={() => run(it)}
                       className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-40"
                     >
-                      <span>{it.label}</span>
+                      <span className="flex items-center gap-1.5">
+                        {it.checked !== undefined && (
+                          <span className="w-3 text-primary">{it.checked ? "✓" : ""}</span>
+                        )}
+                        {it.label}
+                      </span>
                       {it.hint && <span className="ml-3 text-[10px] text-muted-foreground">{it.hint}</span>}
                     </button>
                   ),

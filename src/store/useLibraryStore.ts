@@ -7,6 +7,7 @@ import {
   type Cue,
   type DeepScanResult,
   type DupGroup,
+  type GroupBy,
   type ScannedTrack,
   type StructureResult,
   type TagKey,
@@ -17,7 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
-import { loadView, saveView, loadTitleFormat, saveTitleFormat } from "@/lib/prefs";
+import { loadView, saveView, loadTitleFormat, saveTitleFormat, loadHiddenCols, saveHiddenCols } from "@/lib/prefs";
 import { applyTemplate, applyCharLimit } from "@/lib/format";
 
 const INITIAL_VIEW = loadView();
@@ -68,6 +69,15 @@ interface LibraryState {
   /** Active top-level mode (Library / Analysis / Export). */
   mode: AppMode;
   setMode: (mode: AppMode) => void;
+
+  /** Grid view controls — shared by the "Visualizar" menu and the grid strip. */
+  groupBy: GroupBy;
+  setGroupBy: (g: GroupBy) => void;
+  colFiltersOpen: boolean;
+  setColFiltersOpen: (open: boolean) => void;
+  hiddenCols: string[];
+  toggleHiddenCol: (key: string) => void;
+  showAllCols: () => void;
 
   aiRunning: boolean;
   aiProgress: { done: number; total: number } | null;
@@ -472,6 +482,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   mode: "library",
   setMode: (mode) => set({ mode }),
+
+  groupBy: "none",
+  setGroupBy: (g) => set({ groupBy: g }),
+  colFiltersOpen: false,
+  setColFiltersOpen: (open) => set({ colFiltersOpen: open }),
+  hiddenCols: loadHiddenCols(),
+  toggleHiddenCol: (key) =>
+    set((state) => {
+      const next = state.hiddenCols.includes(key)
+        ? state.hiddenCols.filter((k) => k !== key)
+        : [...state.hiddenCols, key];
+      saveHiddenCols(next);
+      return { hiddenCols: next };
+    }),
+  showAllCols: () => {
+    saveHiddenCols([]);
+    set({ hiddenCols: [] });
+  },
 
   setFilter: (value) => {
     set({ filter: value });
