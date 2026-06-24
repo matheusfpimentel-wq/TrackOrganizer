@@ -9,13 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 import { windowRange } from "@/lib/virtual";
-import {
-  loadColWidths,
-  saveColWidths,
-  loadSavedViews,
-  saveSavedViews,
-  type SavedView,
-} from "@/lib/prefs";
+import { loadColWidths, saveColWidths } from "@/lib/prefs";
 
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.key, c.width]),
@@ -108,9 +102,7 @@ function groupOf(row: TrackRow, by: GroupBy): { key: string; label: string } {
 export function TrackGrid() {
   const rows = useLibraryStore((s) => s.rows);
   const filter = useLibraryStore((s) => s.filter);
-  const setFilter = useLibraryStore((s) => s.setFilter);
   const lens = useLibraryStore((s) => s.lens);
-  const setLens = useLibraryStore((s) => s.setLens);
   const selection = useLibraryStore((s) => s.selection);
   const anchor = useLibraryStore((s) => s.anchor);
   const setSelection = useLibraryStore((s) => s.setSelection);
@@ -133,62 +125,26 @@ export function TrackGrid() {
   const genres = useLibraryStore((s) => s.config.genres);
   const scan = useLibraryStore((s) => s.scan);
   const importLibrary = useLibraryStore((s) => s.importLibrary);
-  // View state lives in the store (shared with the "Visualizar" menu).
+  // View state lives in the store (shared with the "Visualizar" / "Views" menus).
   const groupBy = useLibraryStore((s) => s.groupBy);
   const colFiltersOpen = useLibraryStore((s) => s.colFiltersOpen);
-  const setColFiltersOpen = useLibraryStore((s) => s.setColFiltersOpen);
   const hiddenCols = useLibraryStore((s) => s.hiddenCols);
   const toggleHiddenCol = useLibraryStore((s) => s.toggleHiddenCol);
   const showAllCols = useLibraryStore((s) => s.showAllCols);
+  const sort = useLibraryStore((s) => s.sort);
+  const setSort = useLibraryStore((s) => s.setSort);
+  const colFilters = useLibraryStore((s) => s.colFilters);
+  const setColFilters = useLibraryStore((s) => s.setColFilters);
 
   const [menu, setMenu] = useState<ContextMenu | null>(null);
   const [colMenu, setColMenu] = useState<{ x: number; y: number } | null>(null);
-  const [sort, setSort] = useState<{ col: SortKey; dir: "asc" | "desc" } | null>(null);
-  // Per-column quick filters (key = TagKey or "fileName"); empty = no filter.
-  const [colFilters, setColFilters] = useState<Record<string, string>>({});
-  const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
-  const [showViews, setShowViews] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const hiddenSet = useMemo(() => new Set(hiddenCols), [hiddenCols]);
   // Columns actually shown (user can hide some via the header right-click menu).
   const visibleCols = useMemo(() => COLUMNS.filter((c) => !hiddenSet.has(c.key)), [hiddenSet]);
 
-  const saveCurrentView = useCallback(() => {
-    const name = window.prompt("Nome da view (Smart Crate):")?.trim();
-    if (!name) return;
-    const view: SavedView = { name, filter, lens, sort, colFilters };
-    setSavedViews((prev) => {
-      const next = [...prev.filter((v) => v.name !== name), view];
-      saveSavedViews(next);
-      return next;
-    });
-    setShowViews(false);
-  }, [filter, lens, sort, colFilters]);
-
-  const applyView = useCallback(
-    (v: SavedView) => {
-      setFilter(v.filter);
-      if (lens !== v.lens) setLens(v.lens);
-      setSort(v.sort as { col: SortKey; dir: "asc" | "desc" } | null);
-      setColFilters(v.colFilters ?? {});
-      if (v.colFilters && Object.values(v.colFilters).some((x) => x.trim() !== "")) {
-        setColFiltersOpen(true);
-      }
-      setShowViews(false);
-    },
-    [setFilter, setLens, lens, setColFiltersOpen],
-  );
-
-  const deleteView = useCallback((name: string) => {
-    setSavedViews((prev) => {
-      const next = prev.filter((v) => v.name !== name);
-      saveSavedViews(next);
-      return next;
-    });
-  }, []);
   const cellPad = "px-2 py-1";
-  const hasColFilters = Object.values(colFilters).some((v) => v.trim() !== "");
 
   const analysis = useMemo(() => analyze(rows), [rows]);
   const visible = useMemo(() => {
@@ -210,7 +166,7 @@ export function TrackGrid() {
     const valueOf = (row: TrackRow): string | number | null => {
       if (sort.col === "duration") return row.durationSecs;
       if (sort.col === "fileName") return row.fileName;
-      return row.edited[sort.col];
+      return row.edited[sort.col as TagKey];
     };
     return [...base].sort((a, b) => {
       const va = valueOf(a);
@@ -278,13 +234,14 @@ export function TrackGrid() {
     });
   }, []);
 
-  const toggleSort = useCallback((col: SortKey) => {
-    setSort((cur) => {
-      if (!cur || cur.col !== col) return { col, dir: "asc" };
-      if (cur.dir === "asc") return { col, dir: "desc" };
-      return null;
-    });
-  }, []);
+  const toggleSort = useCallback(
+    (col: SortKey) => {
+      if (!sort || sort.col !== col) setSort({ col, dir: "asc" });
+      else if (sort.dir === "asc") setSort({ col, dir: "desc" });
+      else setSort(null);
+    },
+    [sort, setSort],
+  );
 
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
@@ -928,81 +885,25 @@ export function TrackGrid() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
-        <span className="text-muted-foreground">
-          {visible.length} de {rows.length}
-        </span>
-        <div className="relative">
+      {/* Contextual strip: only shown while grouping is active. */}
+      {groupBy !== "none" && (
+        <div className="flex items-center gap-3 border-b border-border bg-muted/20 px-3 py-1 text-xs text-muted-foreground">
+          <span>Agrupado · {visible.length} faixas</span>
           <button
-            onClick={() => setShowViews((v) => !v)}
-            className="rounded border border-border px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
-            title="Views salvas (Smart Crates)"
+            onClick={() =>
+              setCollapsedGroups(
+                new Set(items.filter((i) => i.type === "header").map((i) => (i as { gkey: string }).gkey)),
+              )
+            }
+            className="underline hover:text-foreground"
           >
-            Views ▾
+            recolher todos
           </button>
-          {showViews && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowViews(false)} />
-              <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-border bg-background py-1 shadow-xl">
-                <button
-                  onClick={saveCurrentView}
-                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-accent"
-                >
-                  ＋ Salvar view atual…
-                </button>
-                {savedViews.length > 0 && <div className="my-1 h-px bg-border" />}
-                {savedViews.length === 0 ? (
-                  <div className="px-3 py-1.5 text-xs text-muted-foreground">Nenhuma view salva.</div>
-                ) : (
-                  savedViews.map((v) => (
-                    <div key={v.name} className="flex items-center justify-between px-1">
-                      <button
-                        onClick={() => applyView(v)}
-                        className="flex-1 truncate rounded px-2 py-1 text-left text-xs hover:bg-accent"
-                      >
-                        {v.name}
-                      </button>
-                      <button
-                        onClick={() => deleteView(v.name)}
-                        aria-label={`Excluir view ${v.name}`}
-                        className="px-1.5 text-xs text-muted-foreground hover:text-danger"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          )}
+          <button onClick={() => setCollapsedGroups(new Set())} className="underline hover:text-foreground">
+            expandir todos
+          </button>
         </div>
-        {hasColFilters && (
-          <button
-            onClick={() => setColFilters({})}
-            className="text-muted-foreground underline hover:text-foreground"
-          >
-            limpar filtros
-          </button>
-        )}
-        {groupBy !== "none" && (
-          <span className="flex items-center gap-2 text-muted-foreground">
-            <span className="text-muted-foreground/60">·</span>
-            <button
-              onClick={() =>
-                setCollapsedGroups(
-                  new Set(items.filter((i) => i.type === "header").map((i) => (i as { gkey: string }).gkey)),
-                )
-              }
-              className="underline hover:text-foreground"
-            >
-              recolher
-            </button>
-            <button onClick={() => setCollapsedGroups(new Set())} className="underline hover:text-foreground">
-              expandir
-            </button>
-          </span>
-        )}
-      </div>
+      )}
       <div
         ref={containerRef}
         tabIndex={0}
@@ -1074,7 +975,7 @@ export function TrackGrid() {
                 <th key={col.key} className="border border-border bg-muted/70 p-0.5">
                   <input
                     value={colFilters[col.key] ?? ""}
-                    onChange={(e) => setColFilters((f) => ({ ...f, [col.key]: e.target.value }))}
+                    onChange={(e) => setColFilters({ ...colFilters, [col.key]: e.target.value })}
                     placeholder={col.type === "number" ? "ex. 120-130" : "filtrar…"}
                     className="w-full rounded bg-background px-1 py-0.5 text-xs font-normal text-foreground outline-none focus:ring-1 focus:ring-primary"
                   />
@@ -1084,7 +985,7 @@ export function TrackGrid() {
               <th className="border border-border bg-muted/70 p-0.5">
                 <input
                   value={colFilters.fileName ?? ""}
-                  onChange={(e) => setColFilters((f) => ({ ...f, fileName: e.target.value }))}
+                  onChange={(e) => setColFilters({ ...colFilters, fileName: e.target.value })}
                   placeholder="filtrar…"
                   className="w-full rounded bg-background px-1 py-0.5 text-xs font-normal text-foreground outline-none focus:ring-1 focus:ring-primary"
                 />

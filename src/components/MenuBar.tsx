@@ -69,11 +69,18 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
   const hiddenCols = useLibraryStore((st) => st.hiddenCols);
   const toggleHiddenCol = useLibraryStore((st) => st.toggleHiddenCol);
   const showAllCols = useLibraryStore((st) => st.showAllCols);
+  const colFilters = useLibraryStore((st) => st.colFilters);
+  const setColFilters = useLibraryStore((st) => st.setColFilters);
+  const savedViews = useLibraryStore((st) => st.savedViews);
+  const saveCurrentView = useLibraryStore((st) => st.saveCurrentView);
+  const applyView = useLibraryStore((st) => st.applyView);
+  const deleteView = useLibraryStore((st) => st.deleteView);
 
   const [open, setOpen] = useState<string | null>(null);
 
   const pendingCount = useMemo(() => rows.filter((r) => r.suggested).length, [rows]);
   const dirtyCount = useMemo(() => rows.filter((r) => r.status === "ready_to_write").length, [rows]);
+  const hasColFilters = Object.values(colFilters).some((v) => v.trim() !== "");
 
   const selectionRowIds = () => {
     const ids = new Set<string>();
@@ -146,6 +153,7 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
       label: "Visualizar",
       items: [
         { label: "Filtros por coluna", onClick: () => setColFiltersOpen(!colFiltersOpen), checked: colFiltersOpen },
+        { label: "Limpar filtros", onClick: () => setColFilters({}), disabled: !hasColFilters },
         "sep",
         ...(
           [
@@ -244,6 +252,59 @@ export function MenuBar({ onOpenSettings, onOpenFind, onOpenPalette }: Props) {
             )}
           </div>
         ))}
+
+        {/* Views (Smart Crates) — custom dropdown (save / apply / delete). */}
+        <div className="relative">
+          <button
+            onClick={() => setOpen((o) => (o === "views" ? null : "views"))}
+            onMouseEnter={() => setOpen((o) => (o !== null ? "views" : o))}
+            className={cn(
+              "rounded px-2 py-1 transition-colors",
+              open === "views" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            Views
+          </button>
+          {open === "views" && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-60 rounded-md border border-border bg-background py-1 shadow-xl">
+              <button
+                onClick={() => {
+                  const name = window.prompt("Nome da view (Smart Crate):")?.trim();
+                  if (name) saveCurrentView(name);
+                  setOpen(null);
+                }}
+                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+              >
+                ＋ Salvar view atual…
+              </button>
+              {savedViews.length > 0 && <div className="my-1 h-px bg-border" />}
+              {savedViews.length === 0 ? (
+                <div className="px-3 py-1.5 text-xs text-muted-foreground">Nenhuma view salva.</div>
+              ) : (
+                savedViews.map((v) => (
+                  <div key={v.name} className="flex items-center justify-between px-1">
+                    <button
+                      onClick={() => {
+                        applyView(v);
+                        setOpen(null);
+                      }}
+                      className="flex-1 truncate rounded px-2 py-1 text-left text-sm hover:bg-accent"
+                    >
+                      {v.name}
+                    </button>
+                    <button
+                      onClick={() => deleteView(v.name)}
+                      aria-label={`Excluir view ${v.name}`}
+                      className="px-1.5 text-xs text-muted-foreground hover:text-danger"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         <Input
           id="library-filter"

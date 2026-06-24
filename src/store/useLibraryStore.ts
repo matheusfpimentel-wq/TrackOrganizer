@@ -18,7 +18,17 @@ import { listen } from "@tauri-apps/api/event";
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
-import { loadView, saveView, loadTitleFormat, saveTitleFormat, loadHiddenCols, saveHiddenCols } from "@/lib/prefs";
+import {
+  loadView,
+  saveView,
+  loadTitleFormat,
+  saveTitleFormat,
+  loadHiddenCols,
+  saveHiddenCols,
+  loadSavedViews,
+  saveSavedViews,
+  type SavedView,
+} from "@/lib/prefs";
 import { applyTemplate, applyCharLimit } from "@/lib/format";
 
 const INITIAL_VIEW = loadView();
@@ -78,6 +88,17 @@ interface LibraryState {
   hiddenCols: string[];
   toggleHiddenCol: (key: string) => void;
   showAllCols: () => void;
+  /** Active sort (col is a TagKey or "duration"/"fileName"). */
+  sort: { col: string; dir: "asc" | "desc" } | null;
+  setSort: (s: { col: string; dir: "asc" | "desc" } | null) => void;
+  /** Per-column filter expressions (key = TagKey or "fileName"). */
+  colFilters: Record<string, string>;
+  setColFilters: (f: Record<string, string>) => void;
+  /** Saved views (Smart Crates): search + lens + sort + column filters. */
+  savedViews: SavedView[];
+  saveCurrentView: (name: string) => void;
+  applyView: (v: SavedView) => void;
+  deleteView: (name: string) => void;
 
   aiRunning: boolean;
   aiProgress: { done: number; total: number } | null;
@@ -499,6 +520,41 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   showAllCols: () => {
     saveHiddenCols([]);
     set({ hiddenCols: [] });
+  },
+
+  sort: null,
+  setSort: (sort) => set({ sort }),
+  colFilters: {},
+  setColFilters: (colFilters) => set({ colFilters }),
+  savedViews: loadSavedViews(),
+  saveCurrentView: (name) => {
+    const st = get();
+    const view: SavedView = {
+      name,
+      filter: st.filter,
+      lens: st.lens,
+      sort: st.sort,
+      colFilters: st.colFilters,
+    };
+    const next = [...st.savedViews.filter((v) => v.name !== name), view];
+    saveSavedViews(next);
+    set({ savedViews: next });
+  },
+  applyView: (v) => {
+    const hasFilters = v.colFilters && Object.values(v.colFilters).some((x) => x.trim() !== "");
+    set({
+      filter: v.filter,
+      lens: v.lens,
+      sort: v.sort,
+      colFilters: v.colFilters ?? {},
+      colFiltersOpen: hasFilters ? true : get().colFiltersOpen,
+    });
+    saveView({ filter: v.filter, lens: v.lens });
+  },
+  deleteView: (name) => {
+    const next = get().savedViews.filter((v) => v.name !== name);
+    saveSavedViews(next);
+    set({ savedViews: next });
   },
 
   setFilter: (value) => {
