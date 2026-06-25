@@ -65,6 +65,8 @@ pub struct StoredConfig {
     #[serde(default)]
     pub enrich_soundcloud: bool,
     #[serde(default)]
+    pub enrich_acoustid: bool,
+    #[serde(default)]
     pub spotify_client_id: String,
     #[serde(default)]
     pub spotify_client_secret: String,
@@ -88,6 +90,7 @@ impl Default for StoredConfig {
             enrich_itunes: true,
             enrich_spotify: false,
             enrich_soundcloud: false,
+            enrich_acoustid: false,
             spotify_client_id: String::new(),
             spotify_client_secret: String::new(),
             acoustid_key: String::new(),
@@ -111,6 +114,7 @@ impl StoredConfig {
             enrich_itunes: self.enrich_itunes,
             enrich_spotify: self.enrich_spotify,
             enrich_soundcloud: self.enrich_soundcloud,
+            enrich_acoustid: self.enrich_acoustid,
             has_spotify: !self.spotify_client_id.trim().is_empty()
                 && !self.spotify_client_secret.trim().is_empty(),
             has_acoustid: !self.acoustid_key.trim().is_empty(),
@@ -166,6 +170,7 @@ pub fn update_config(
     enrich_itunes: Option<bool>,
     enrich_spotify: Option<bool>,
     enrich_soundcloud: Option<bool>,
+    enrich_acoustid: Option<bool>,
     spotify_client_id: Option<String>,
     spotify_client_secret: Option<String>,
     acoustid_key: Option<String>,
@@ -225,6 +230,9 @@ pub fn update_config(
     }
     if let Some(v) = enrich_soundcloud {
         cfg.enrich_soundcloud = v;
+    }
+    if let Some(v) = enrich_acoustid {
+        cfg.enrich_acoustid = v;
     }
     // Secrets: only overwrite when a non-empty value is provided.
     if let Some(id) = spotify_client_id {

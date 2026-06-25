@@ -282,6 +282,7 @@ export interface PublicConfig {
   enrichItunes: boolean;
   enrichSpotify: boolean;
   enrichSoundcloud: boolean;
+  enrichAcoustid: boolean;
   hasSpotify: boolean;
   hasAcoustid: boolean;
 }
@@ -300,6 +301,7 @@ export interface ConfigPatch {
   enrichItunes?: boolean;
   enrichSpotify?: boolean;
   enrichSoundcloud?: boolean;
+  enrichAcoustid?: boolean;
   spotifyClientId?: string;
   spotifyClientSecret?: string;
   acoustidKey?: string;
@@ -319,6 +321,7 @@ const DEV_CONFIG: PublicConfig = {
   enrichItunes: true,
   enrichSpotify: false,
   enrichSoundcloud: false,
+  enrichAcoustid: false,
   hasSpotify: false,
   hasAcoustid: false,
 };
@@ -378,6 +381,10 @@ export interface EnrichInput {
   id: string;
   title: string;
   artist: string;
+  /** Absolute path for AcoustID audio fingerprinting. */
+  filePath?: string;
+  /** Track length (s) sent to AcoustID for better matching. */
+  durationSecs?: number | null;
 }
 
 export interface Enrichment {

@@ -33,6 +33,8 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [enrichSpotify, setEnrichSpotify] = useState(config.enrichSpotify);
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
+  const [enrichAcoustid, setEnrichAcoustid] = useState(config.enrichAcoustid);
+  const [acoustidKey, setAcoustidKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -53,6 +55,8 @@ export function SettingsDialog({ open, onClose }: Props) {
       setEnrichSpotify(config.enrichSpotify);
       setSpotifyClientId("");
       setSpotifyClientSecret("");
+      setEnrichAcoustid(config.enrichAcoustid);
+      setAcoustidKey("");
       setApiKey("");
       setError(null);
       setTestResult(null);
@@ -93,12 +97,16 @@ export function SettingsDialog({ open, onClose }: Props) {
         enrichMusicbrainz,
         enrichItunes,
         enrichSpotify,
+        enrichAcoustid,
       };
       if (spotifyClientId.trim()) {
         patch.spotifyClientId = spotifyClientId.trim();
       }
       if (spotifyClientSecret.trim()) {
         patch.spotifyClientSecret = spotifyClientSecret.trim();
+      }
+      if (acoustidKey.trim()) {
+        patch.acoustidKey = acoustidKey.trim();
       }
       if (provider === "claude") {
         patch.model = model.trim();
@@ -338,6 +346,19 @@ export function SettingsDialog({ open, onClose }: Props) {
               {config.hasSpotify ? "(chave ok)" : "(sem chave)"}
             </span>
           </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichAcoustid}
+              onChange={(e) => setEnrichAcoustid(e.target.checked)}
+              className="accent-primary"
+            />
+            AcoustID — identifica pela <strong>impressão digital do áudio</strong>{" "}
+            <span className={config.hasAcoustid ? "text-primary" : "text-dirty"}>
+              {config.hasAcoustid ? "(chave ok)" : "(sem chave)"}
+            </span>{" "}
+            <span className="text-muted-foreground/70">(experimental)</span>
+          </label>
         </div>
         {enrichSpotify && (
           <div className="mb-2 space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
@@ -359,6 +380,22 @@ export function SettingsDialog({ open, onClose }: Props) {
             <p className="text-[11px] text-muted-foreground">
               Crie um app grátis em developer.spotify.com → Dashboard. Guardado só no backend.
               Sem BPM/tom (API descontinuada).
+            </p>
+          </div>
+        )}
+        {enrichAcoustid && (
+          <div className="mb-2 space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
+            <Input
+              type="password"
+              value={acoustidKey}
+              onChange={(e) => setAcoustidKey(e.target.value)}
+              placeholder={config.hasAcoustid ? "API key (deixe vazio para manter)" : "AcoustID API key"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Pegue uma key grátis em acoustid.org/api-key. Faz fingerprint do áudio (Chromaprint)
+              e identifica a faixa mesmo com nome/tags errados. Mais lento (lê o áudio). Experimental.
             </p>
           </div>
         )}

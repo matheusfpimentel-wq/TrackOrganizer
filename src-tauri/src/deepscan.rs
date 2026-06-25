@@ -19,7 +19,7 @@ const MAX_SECONDS: usize = 30;
 const CUTOFF_REL: f64 = 0.005; // ~ -46 dB
 
 /// Decode up to `MAX_SECONDS` of `path` to a mono f32 buffer + sample rate.
-fn decode_mono(path: &str) -> Result<(Vec<f32>, u32, u32), String> {
+pub fn decode_mono(path: &str) -> Result<(Vec<f32>, u32, u32), String> {
     decode_mono_max(path, MAX_SECONDS)
 }
 

@@ -1,9 +1,69 @@
 use crate::config;
 use crate::model::{EnrichInput, Enrichment};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rusty_chromaprint::{Configuration, FingerprintCompressor, Fingerprinter};
 use serde_json::Value;
 use tauri::AppHandle;
 
 const USER_AGENT: &str = "Tracklistr/0.1 (https://github.com/matheusfpimentel-wq/TrackOrganizer)";
+
+/// Compute an AcoustID-compatible Chromaprint fingerprint (compressed, base64
+/// url-safe) for the audio file, plus its duration in seconds.
+fn chromaprint_fp(path: &str, known_secs: Option<u32>) -> Option<(String, u32)> {
+    let (mono, sample_rate, _ch) = crate::deepscan::decode_mono(path).ok()?;
+    if sample_rate == 0 || mono.is_empty() {
+        return None;
+    }
+    let decoded_secs = (mono.len() as u32) / sample_rate;
+    let duration = known_secs.filter(|s| *s > 0).unwrap_or(decoded_secs);
+    let samples: Vec<i16> = mono.iter().map(|&v| (v.clamp(-1.0, 1.0) * 32767.0) as i16).collect();
+
+    let config = Configuration::preset_test2();
+    let mut printer = Fingerprinter::new(&config);
+    printer.start(sample_rate, 1).ok()?;
+    printer.consume(&samples);
+    printer.finish();
+    let raw = printer.fingerprint();
+    if raw.is_empty() {
+        return None;
+    }
+    let compressed = FingerprintCompressor::from(&config).compress(raw);
+    Some((URL_SAFE_NO_PAD.encode(&compressed), duration))
+}
+
+/// Identify a track by its audio via AcoustID; returns the first recording match.
+async fn acoustid_lookup(
+    client: &reqwest::Client,
+    key: &str,
+    path: &str,
+    known_secs: Option<u32>,
+) -> Option<Value> {
+    let (fp, duration) = chromaprint_fp(path, known_secs)?;
+    let dur = duration.to_string();
+    let resp = client
+        .get("https://api.acoustid.org/v2/lookup")
+        .query(&[
+            ("client", key),
+            ("format", "json"),
+            ("duration", dur.as_str()),
+            ("fingerprint", fp.as_str()),
+            ("meta", "recordings releasegroups"),
+        ])
+        .send()
+        .await
+        .ok()?;
+    let value: Value = resp.json().await.ok()?;
+    value
+        .get("results")?
+        .as_array()?
+        .iter()
+        .find_map(|r| {
+            r.get("recordings")
+                .and_then(Value::as_array)
+                .and_then(|a| a.first())
+                .cloned()
+        })
+}
 
 /// First Deezer search hit for "artist title" (public API, no auth).
 async fn deezer_first(client: &reqwest::Client, title: &str, artist: &str) -> Option<Value> {
@@ -151,6 +211,33 @@ pub async fn enrich_tracks(app: AppHandle, tracks: Vec<EnrichInput>) -> Result<V
             id: t.id.clone(),
             ..Default::default()
         };
+
+        // AcoustID first: identifies by the actual audio (independent of the
+        // possibly-wrong filename/tags), so it seeds the canonical title/artist.
+        if cfg.enrich_acoustid && !cfg.acoustid_key.trim().is_empty() && !t.file_path.trim().is_empty()
+        {
+            if let Some(rec) = acoustid_lookup(&client, &cfg.acoustid_key, &t.file_path, t.duration_secs).await
+            {
+                e.title = rec.get("title").and_then(Value::as_str).map(String::from);
+                e.artist = rec
+                    .get("artists")
+                    .and_then(Value::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|x| x.get("name"))
+                    .and_then(Value::as_str)
+                    .map(String::from);
+                e.album = rec
+                    .get("releasegroups")
+                    .and_then(Value::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|x| x.get("title"))
+                    .and_then(Value::as_str)
+                    .map(String::from);
+                e.sources.push("AcoustID".into());
+            }
+        }
+
+        // Text-based providers need at least a title/artist to search.
         if t.title.trim().is_empty() && t.artist.trim().is_empty() {
             out.push(e);
             continue;

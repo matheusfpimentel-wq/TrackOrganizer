@@ -378,6 +378,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     enrichItunes: true,
     enrichSpotify: false,
     enrichSoundcloud: false,
+    enrichAcoustid: false,
     hasSpotify: false,
     hasAcoustid: false,
   },
@@ -795,7 +796,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const byId = new Map<string, api.Enrichment>();
       let done = 0;
       for (const part of chunk(targets, 15)) {
-        const inputs = part.map((r) => ({ id: r.id, title: r.edited.title, artist: r.edited.artist }));
+        const inputs = part.map((r) => ({
+          id: r.id,
+          title: r.edited.title,
+          artist: r.edited.artist,
+          filePath: r.filePath,
+          durationSecs: r.durationSecs,
+        }));
         const res = await api.enrichTracks(inputs);
         for (const e of res) byId.set(e.id, e);
         done += part.length;

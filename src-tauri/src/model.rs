@@ -82,6 +82,12 @@ pub struct EnrichInput {
     pub id: String,
     pub title: String,
     pub artist: String,
+    /// Absolute path (for AcoustID audio fingerprinting). Optional.
+    #[serde(default)]
+    pub file_path: String,
+    /// Track length in seconds (sent to AcoustID for better matching).
+    #[serde(default)]
+    pub duration_secs: Option<u32>,
 }
 
 /// Reference metadata fetched for one track. Only known fields are populated.
@@ -219,6 +225,7 @@ pub struct PublicConfig {
     pub enrich_itunes: bool,
     pub enrich_spotify: bool,
     pub enrich_soundcloud: bool,
+    pub enrich_acoustid: bool,
     pub has_spotify: bool,
     pub has_acoustid: bool,
 }
