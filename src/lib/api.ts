@@ -277,6 +277,14 @@ export interface PublicConfig {
   ollamaModel: string;
   genres: string[];
   genreStrict: boolean;
+  enrichDeezer: boolean;
+  enrichMusicbrainz: boolean;
+  enrichItunes: boolean;
+  enrichSpotify: boolean;
+  enrichSoundcloud: boolean;
+  enrichAcoustid: boolean;
+  hasSpotify: boolean;
+  hasAcoustid: boolean;
 }
 
 export interface ConfigPatch {
@@ -288,6 +296,15 @@ export interface ConfigPatch {
   ollamaModel?: string;
   genres?: string[];
   genreStrict?: boolean;
+  enrichDeezer?: boolean;
+  enrichMusicbrainz?: boolean;
+  enrichItunes?: boolean;
+  enrichSpotify?: boolean;
+  enrichSoundcloud?: boolean;
+  enrichAcoustid?: boolean;
+  spotifyClientId?: string;
+  spotifyClientSecret?: string;
+  acoustidKey?: string;
 }
 
 const DEV_CONFIG: PublicConfig = {
@@ -295,10 +312,18 @@ const DEV_CONFIG: PublicConfig = {
   model: "claude-sonnet-4-6",
   charLimit: 50,
   hasApiKey: true,
-  ollamaUrl: "http://localhost:11434",
+  ollamaUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.1",
   genres: [],
   genreStrict: false,
+  enrichDeezer: true,
+  enrichMusicbrainz: true,
+  enrichItunes: true,
+  enrichSpotify: false,
+  enrichSoundcloud: false,
+  enrichAcoustid: false,
+  hasSpotify: false,
+  hasAcoustid: false,
 };
 
 export async function getConfig(): Promise<PublicConfig> {
@@ -310,7 +335,13 @@ export async function getConfig(): Promise<PublicConfig> {
 
 export async function updateConfig(patch: ConfigPatch): Promise<PublicConfig> {
   if (!isTauri()) {
-    const { apiKey: _apiKey, ...rest } = patch;
+    const {
+      apiKey: _apiKey,
+      spotifyClientId: _sid,
+      spotifyClientSecret: _ssecret,
+      acoustidKey: _akey,
+      ...rest
+    } = patch;
     return { ...DEV_CONFIG, ...rest, hasApiKey: true };
   }
   return invoke<PublicConfig>("update_config", patch as unknown as Record<string, unknown>);
@@ -338,6 +369,42 @@ export interface AiTrackInput {
   key: string;
   year: number | null;
   fileName: string;
+  /** External reference metadata (Deezer/MusicBrainz) to ground the AI. */
+  reference?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming-platform enrichment
+// ---------------------------------------------------------------------------
+
+export interface EnrichInput {
+  id: string;
+  title: string;
+  artist: string;
+  /** Absolute path for AcoustID audio fingerprinting. */
+  filePath?: string;
+  /** Track length (s) sent to AcoustID for better matching. */
+  durationSecs?: number | null;
+}
+
+export interface Enrichment {
+  id: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: number;
+  bpm?: number;
+  genre?: string;
+  /** Providers that contributed (e.g. ["Deezer", "MusicBrainz"]). */
+  sources: string[];
+}
+
+/** Look up reference metadata for tracks on the enabled platforms. */
+export async function enrichTracks(tracks: EnrichInput[]): Promise<Enrichment[]> {
+  if (!isTauri()) {
+    return [];
+  }
+  return invoke<Enrichment[]>("enrich_tracks", { tracks });
 }
 
 export interface AiRequest {
@@ -352,4 +419,26 @@ export async function tagWithAi(request: AiRequest): Promise<{ suggestions: AiSu
     return { suggestions: mockAiSuggestions(request.tracks, request.fields, request.charLimit) };
   }
   return invoke<{ suggestions: AiSuggestion[] }>("tag_with_ai", { request });
+}
+
+export interface OllamaStatus {
+  ok: boolean;
+  url: string;
+  models: string[];
+  modelPresent: boolean;
+  error: string | null;
+}
+
+/** Probe the configured Ollama server: is it reachable and is the model present? */
+export async function checkOllama(): Promise<OllamaStatus> {
+  if (!isTauri()) {
+    return {
+      ok: true,
+      url: DEV_CONFIG.ollamaUrl,
+      models: [DEV_CONFIG.ollamaModel],
+      modelPresent: true,
+      error: null,
+    };
+  }
+  return invoke<OllamaStatus>("check_ollama");
 }

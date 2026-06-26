@@ -5,6 +5,25 @@ import type { Lens } from "@/lib/analysis";
 const COL_WIDTHS_KEY = "tracklistr.colWidths";
 const VIEW_KEY = "tracklistr.view";
 const TITLE_FORMAT_KEY = "tracklistr.titleFormat";
+const DENSITY_KEY = "tracklistr.density";
+
+export type Density = "compact" | "comfortable";
+
+export function loadDensity(): Density {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "comfortable" ? "comfortable" : "compact";
+  } catch {
+    return "compact";
+  }
+}
+
+export function saveDensity(d: Density): void {
+  try {
+    localStorage.setItem(DENSITY_KEY, d);
+  } catch {
+    // ignore
+  }
+}
 
 export const DEFAULT_TITLE_FORMAT = "[titulo] - [artista] ([versao])";
 
@@ -45,6 +64,61 @@ export function loadView(): ViewPrefs {
 export function saveView(view: ViewPrefs): void {
   try {
     localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+  } catch {
+    // ignore
+  }
+}
+
+const HIDDEN_COLS_KEY = "tracklistr.hiddenCols";
+
+export function loadHiddenCols(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_COLS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (Array.isArray(v)) return v as string[];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function saveHiddenCols(keys: string[]): void {
+  try {
+    localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(keys));
+  } catch {
+    // ignore
+  }
+}
+
+const VIEWS_KEY = "tracklistr.savedViews";
+
+/** A named, reusable view (Smart Crate): search + lens + sort + column filters. */
+export interface SavedView {
+  name: string;
+  filter: string;
+  lens: Lens;
+  sort: { col: string; dir: "asc" | "desc" } | null;
+  colFilters: Record<string, string>;
+}
+
+export function loadSavedViews(): SavedView[] {
+  try {
+    const raw = localStorage.getItem(VIEWS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (Array.isArray(v)) return v as SavedView[];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function saveSavedViews(views: SavedView[]): void {
+  try {
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
   } catch {
     // ignore
   }

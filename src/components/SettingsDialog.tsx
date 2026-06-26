@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { AiProvider, ConfigPatch } from "@/lib/api";
+import type { AiProvider, ConfigPatch, OllamaStatus } from "@/lib/api";
+import { checkOllama } from "@/lib/api";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { cn } from "@/lib/utils";
 
@@ -26,8 +27,18 @@ export function SettingsDialog({ open, onClose }: Props) {
   const [ollamaModel, setOllamaModel] = useState(config.ollamaModel);
   const [genresText, setGenresText] = useState(config.genres.join("\n"));
   const [genreStrict, setGenreStrict] = useState(config.genreStrict);
+  const [enrichDeezer, setEnrichDeezer] = useState(config.enrichDeezer);
+  const [enrichMusicbrainz, setEnrichMusicbrainz] = useState(config.enrichMusicbrainz);
+  const [enrichItunes, setEnrichItunes] = useState(config.enrichItunes);
+  const [enrichSpotify, setEnrichSpotify] = useState(config.enrichSpotify);
+  const [spotifyClientId, setSpotifyClientId] = useState("");
+  const [spotifyClientSecret, setSpotifyClientSecret] = useState("");
+  const [enrichAcoustid, setEnrichAcoustid] = useState(config.enrichAcoustid);
+  const [acoustidKey, setAcoustidKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<OllamaStatus | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -38,8 +49,17 @@ export function SettingsDialog({ open, onClose }: Props) {
       setOllamaModel(config.ollamaModel);
       setGenresText(config.genres.join("\n"));
       setGenreStrict(config.genreStrict);
+      setEnrichDeezer(config.enrichDeezer);
+      setEnrichMusicbrainz(config.enrichMusicbrainz);
+      setEnrichItunes(config.enrichItunes);
+      setEnrichSpotify(config.enrichSpotify);
+      setSpotifyClientId("");
+      setSpotifyClientSecret("");
+      setEnrichAcoustid(config.enrichAcoustid);
+      setAcoustidKey("");
       setApiKey("");
       setError(null);
+      setTestResult(null);
     }
   }, [open, config]);
 
@@ -73,7 +93,21 @@ export function SettingsDialog({ open, onClose }: Props) {
         charLimit: Number.parseInt(charLimit, 10) || config.charLimit,
         genres: parsedGenres(),
         genreStrict,
+        enrichDeezer,
+        enrichMusicbrainz,
+        enrichItunes,
+        enrichSpotify,
+        enrichAcoustid,
       };
+      if (spotifyClientId.trim()) {
+        patch.spotifyClientId = spotifyClientId.trim();
+      }
+      if (spotifyClientSecret.trim()) {
+        patch.spotifyClientSecret = spotifyClientSecret.trim();
+      }
+      if (acoustidKey.trim()) {
+        patch.acoustidKey = acoustidKey.trim();
+      }
       if (provider === "claude") {
         patch.model = model.trim();
         if (apiKey.trim()) {
@@ -89,6 +123,26 @@ export function SettingsDialog({ open, onClose }: Props) {
       setError(String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Persist the on-screen Ollama settings, then probe the server so the test
+  // reflects exactly what the user just typed.
+  const testConnection = async () => {
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      await saveConfig({
+        provider: "ollama",
+        ollamaUrl: ollamaUrl.trim(),
+        ollamaModel: ollamaModel.trim(),
+      });
+      setTestResult(await checkOllama());
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -146,7 +200,7 @@ export function SettingsDialog({ open, onClose }: Props) {
             <Input
               value={ollamaUrl}
               onChange={(e) => setOllamaUrl(e.target.value)}
-              placeholder="http://localhost:11434"
+              placeholder="http://127.0.0.1:11434"
               className="mb-3 w-full"
             />
             <label className="mb-1 block text-xs text-muted-foreground">Modelo Ollama</label>
@@ -156,10 +210,48 @@ export function SettingsDialog({ open, onClose }: Props) {
               placeholder="llama3.1"
               className="mb-1 w-full"
             />
-            <p className="mb-4 text-[11px] text-muted-foreground">
+            <p className="mb-2 text-[11px] text-muted-foreground">
               Rode <code>ollama serve</code> e baixe o modelo com{" "}
               <code>ollama pull {ollamaModel || "llama3.1"}</code>. Tudo roda local, sem custo.
             </p>
+            <div className="mb-2">
+              <Button variant="outline" size="sm" onClick={() => void testConnection()} disabled={testing}>
+                {testing ? "Testando…" : "Testar conexão"}
+              </Button>
+            </div>
+            {testResult && (
+              <div
+                className={cn(
+                  "mb-4 rounded-md border px-2.5 py-2 text-[11px]",
+                  testResult.ok
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-danger/40 bg-danger/10 text-foreground",
+                )}
+              >
+                {testResult.ok ? (
+                  <>
+                    <p className="font-medium text-primary">
+                      Conectado em {testResult.url}
+                    </p>
+                    {testResult.models.length > 0 ? (
+                      <p className="mt-1 text-muted-foreground">
+                        Modelos instalados: {testResult.models.join(", ")}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">Nenhum modelo instalado ainda.</p>
+                    )}
+                    {!testResult.modelPresent && (
+                      <p className="mt-1 text-dirty">
+                        O modelo "{ollamaModel || "llama3.1"}" não está instalado. Rode{" "}
+                        <code>ollama pull {ollamaModel || "llama3.1"}</code>.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-danger">{testResult.error}</p>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -212,6 +304,106 @@ export function SettingsDialog({ open, onClose }: Props) {
           />
           Restringir a IA a estes gêneros (modo estrito)
         </label>
+
+        <label className="mb-1 block text-xs text-muted-foreground">Enriquecimento de metadados</label>
+        <div className="mb-1 space-y-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichDeezer}
+              onChange={(e) => setEnrichDeezer(e.target.checked)}
+              className="accent-primary"
+            />
+            Deezer — preenche <strong>BPM</strong> e confirma título/artista/álbum
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichMusicbrainz}
+              onChange={(e) => setEnrichMusicbrainz(e.target.checked)}
+              className="accent-primary"
+            />
+            MusicBrainz — confirma <strong>álbum/ano</strong> e nomes canônicos
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichItunes}
+              onChange={(e) => setEnrichItunes(e.target.checked)}
+              className="accent-primary"
+            />
+            iTunes/Apple — <strong>gênero</strong> por faixa + álbum/ano (sem chave)
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichSpotify}
+              onChange={(e) => setEnrichSpotify(e.target.checked)}
+              className="accent-primary"
+            />
+            Spotify — <strong>gênero</strong> (do artista) + álbum/ano{" "}
+            <span className={config.hasSpotify ? "text-primary" : "text-dirty"}>
+              {config.hasSpotify ? "(chave ok)" : "(sem chave)"}
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={enrichAcoustid}
+              onChange={(e) => setEnrichAcoustid(e.target.checked)}
+              className="accent-primary"
+            />
+            AcoustID — identifica pela <strong>impressão digital do áudio</strong>{" "}
+            <span className={config.hasAcoustid ? "text-primary" : "text-dirty"}>
+              {config.hasAcoustid ? "(chave ok)" : "(sem chave)"}
+            </span>{" "}
+            <span className="text-muted-foreground/70">(experimental)</span>
+          </label>
+        </div>
+        {enrichSpotify && (
+          <div className="mb-2 space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
+            <Input
+              value={spotifyClientId}
+              onChange={(e) => setSpotifyClientId(e.target.value)}
+              placeholder={config.hasSpotify ? "Client ID (deixe vazio para manter)" : "Spotify Client ID"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <Input
+              type="password"
+              value={spotifyClientSecret}
+              onChange={(e) => setSpotifyClientSecret(e.target.value)}
+              placeholder={config.hasSpotify ? "Client Secret (deixe vazio para manter)" : "Spotify Client Secret"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Crie um app grátis em developer.spotify.com → Dashboard. Guardado só no backend.
+              Sem BPM/tom (API descontinuada).
+            </p>
+          </div>
+        )}
+        {enrichAcoustid && (
+          <div className="mb-2 space-y-1.5 rounded-md border border-border bg-muted/30 p-2">
+            <Input
+              type="password"
+              value={acoustidKey}
+              onChange={(e) => setAcoustidKey(e.target.value)}
+              placeholder={config.hasAcoustid ? "API key (deixe vazio para manter)" : "AcoustID API key"}
+              className="w-full text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Pegue uma key grátis em acoustid.org/api-key. Faz fingerprint do áudio (Chromaprint)
+              e identifica a faixa mesmo com nome/tags errados. Mais lento (lê o áudio). Experimental.
+            </p>
+          </div>
+        )}
+        <p className="mb-4 text-[11px] text-muted-foreground">
+          O botão <strong>Enriquecer</strong> busca esses dados (grátis, sem login). Os fatos
+          viram sugestões revisáveis e também passam como contexto para a IA. Spotify e AcoustID
+          (fingerprint) chegam numa próxima versão.
+        </p>
 
         {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 

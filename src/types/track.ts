@@ -91,6 +91,9 @@ export const COLUMNS: readonly ColumnDef[] = [
 export const AI_FIELDS = ["title", "artist", "genre", "energy"] as const;
 export type AiField = (typeof AI_FIELDS)[number];
 
+/** How the grid groups rows (none = flat). */
+export type GroupBy = "none" | "genre" | "key" | "bpm";
+
 /** AI proposal for one track (only requested fields populated). */
 export interface AiSuggestion {
   id: string;

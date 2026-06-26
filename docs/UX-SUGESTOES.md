@@ -3,6 +3,28 @@
 Revisão do estado atual (core + IA + análise + setlist/import-export) com sugestões
 priorizadas. Marcadas com esforço aproximado: 🟢 rápido · 🟡 médio · 🔴 grande.
 
+## ✅ Implementado (leva edição/biblioteca/cliques/estética)
+- **Edição rápida**: `Ctrl+D` (preencher pra baixo), `Tab`/`Shift+Tab` confirmam e
+  avançam, `Ctrl+A` seleciona tudo que está visível, e botões ✓/✗ inline nas células
+  com sugestão da IA (aceitar/rejeitar sem abrir o Revisar). Ação `setCells` no store
+  aplica lotes em 1 passo de undo.
+- **Menos cliques**: **Command palette** (`Ctrl+K`) com busca difusa de ações; atalhos
+  globais `Ctrl+S` (gravar) e `/` (focar busca); botão "Comandos" no cabeçalho.
+- **Bibliotecas grandes**: **filtros por coluna** (toggle) — numéricos entendem faixa
+  (`120-130`), comparação (`>120`, `<=128`) e número; texto é substring. Contador "N de M".
+- **Estética**: densidade **Compacta/Confortável** (persistida), **zebra striping**,
+  **empty state** com ações e dica do `Ctrl+K`, barra de controles acima da grade.
+
+### Também implementado (2ª parte da leva)
+- **Barra de ação contextual** na seleção (definir gênero/energia, autotag, +setlist).
+- **Views salvas / Smart Crates** (busca + lente + ordenação + filtros de coluna).
+- **Toasts unificados** (gravar/renomear/desfazer/cues).
+- **Dashboard de saúde** da biblioteca (+ lentes "sem capa" e "sem BPM").
+- **Resolver duplicatas**: marca a melhor de cada grupo e seleciona as outras.
+
+- **Agrupar por** (gênero/Tom/faixa de BPM) com grupos recolhíveis na própria grade
+  (virtualização preservada; recolher/expandir todos).
+
 ## ✅ Implementado (leva UX quick-wins)
 - Duração da faixa + **tempo total do set** (item 3)
 - **Camelot/key colorido** na coluna Tom (item 2 — parte visual; ordenação ainda pendente)

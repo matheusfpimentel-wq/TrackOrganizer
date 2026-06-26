@@ -7,6 +7,7 @@ import {
   type Cue,
   type DeepScanResult,
   type DupGroup,
+  type GroupBy,
   type ScannedTrack,
   type StructureResult,
   type TagKey,
@@ -17,7 +18,17 @@ import { listen } from "@tauri-apps/api/event";
 import * as api from "@/lib/api";
 import type { ConfigPatch, PublicConfig } from "@/lib/api";
 import { analyze, applyLens, type Analysis, type Lens } from "@/lib/analysis";
-import { loadView, saveView, loadTitleFormat, saveTitleFormat } from "@/lib/prefs";
+import {
+  loadView,
+  saveView,
+  loadTitleFormat,
+  saveTitleFormat,
+  loadHiddenCols,
+  saveHiddenCols,
+  loadSavedViews,
+  saveSavedViews,
+  type SavedView,
+} from "@/lib/prefs";
 import { applyTemplate, applyCharLimit } from "@/lib/format";
 
 const INITIAL_VIEW = loadView();
@@ -30,10 +41,14 @@ const AI_CHUNK = 20;
 /** Top-level UI mode. */
 export type AppMode = "library" | "analysis" | "export";
 
-interface WriteSummary {
-  ok: number;
-  failed: number;
-  backupPath: string;
+let toastSeq = 0;
+
+/** Transient notification shown in the corner (success / error / info). */
+export interface Toast {
+  id: number;
+  kind: "success" | "error" | "info";
+  message: string;
+  detail?: string;
 }
 
 interface LastWrite {
@@ -65,15 +80,39 @@ interface LibraryState {
   mode: AppMode;
   setMode: (mode: AppMode) => void;
 
+  /** Grid view controls — shared by the "Visualizar" menu and the grid strip. */
+  groupBy: GroupBy;
+  setGroupBy: (g: GroupBy) => void;
+  colFiltersOpen: boolean;
+  setColFiltersOpen: (open: boolean) => void;
+  hiddenCols: string[];
+  toggleHiddenCol: (key: string) => void;
+  showAllCols: () => void;
+  /** Active sort (col is a TagKey or "duration"/"fileName"). */
+  sort: { col: string; dir: "asc" | "desc" } | null;
+  setSort: (s: { col: string; dir: "asc" | "desc" } | null) => void;
+  /** Per-column filter expressions (key = TagKey or "fileName"). */
+  colFilters: Record<string, string>;
+  setColFilters: (f: Record<string, string>) => void;
+  /** Saved views (Smart Crates): search + lens + sort + column filters. */
+  savedViews: SavedView[];
+  saveCurrentView: (name: string) => void;
+  applyView: (v: SavedView) => void;
+  deleteView: (name: string) => void;
+
   aiRunning: boolean;
   aiProgress: { done: number; total: number } | null;
   aiError: string | null;
   reviewOpen: boolean;
 
   writing: boolean;
-  writeResult: WriteSummary | null;
+  /** Transient corner notifications. */
+  toasts: Toast[];
   lastWrite: LastWrite | null;
   writeConfirmOpen: boolean;
+  /** Library health dashboard modal. */
+  healthOpen: boolean;
+  setHealthOpen: (open: boolean) => void;
 
   /** Ordered setlist (row id + transition note to the next track). */
   setlist: { rowId: string; note: string }[];
@@ -117,6 +156,8 @@ interface LibraryState {
   setFilter: (value: string) => void;
   setLens: (lens: Lens) => void;
   setCell: (rowId: string, key: TagKey, raw: string) => void;
+  /** Apply many cell writes (rowId+col+value) in a single undo step. */
+  setCells: (updates: { rowId: string; key: TagKey; raw: string }[]) => void;
   clearCells: (keys: Iterable<string>) => void;
   resetRow: (rowId: string) => void;
   /** Configurable title naming template (e.g. "[titulo] - [artista] ([versao])"). */
@@ -136,9 +177,15 @@ interface LibraryState {
   saveConfig: (patch: ConfigPatch) => Promise<void>;
   clearApiKey: () => Promise<void>;
 
+  /** Reference text per row from streaming platforms, fed to the AI prompt. */
+  references: Record<string, string>;
+  enriching: boolean;
+  enrichProgress: { done: number; total: number } | null;
+  runEnrich: () => Promise<void>;
+
   runAi: () => Promise<void>;
-  applySuggestion: (rowId: string, field: AiField) => void;
-  rejectSuggestion: (rowId: string, field: AiField) => void;
+  applySuggestion: (rowId: string, field: TagKey) => void;
+  rejectSuggestion: (rowId: string, field: TagKey) => void;
   applyAllSuggestions: () => void;
   rejectAllSuggestions: () => void;
   setReviewOpen: (open: boolean) => void;
@@ -146,7 +193,8 @@ interface LibraryState {
 
   writeApproved: () => Promise<void>;
   undoLastWrite: () => Promise<void>;
-  clearWriteResult: () => void;
+  pushToast: (toast: Omit<Toast, "id">) => void;
+  dismissToast: (id: number) => void;
   setWriteConfirmOpen: (open: boolean) => void;
 
   setSetlistOpen: (open: boolean) => void;
@@ -264,8 +312,9 @@ function buildAiTargets(selection: Set<string>): {
   return { perRow, fields: [...fields] };
 }
 
-function toAiInput(row: TrackRow): api.AiTrackInput {
+function toAiInput(row: TrackRow, references?: Record<string, string>): api.AiTrackInput {
   const t = row.edited;
+  const reference = references?.[row.id];
   return {
     id: row.id,
     title: t.title,
@@ -277,6 +326,7 @@ function toAiInput(row: TrackRow): api.AiTrackInput {
     key: t.key,
     year: t.year,
     fileName: row.fileName,
+    ...(reference ? { reference } : {}),
   };
 }
 
@@ -323,7 +373,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     ollamaModel: "llama3.1",
     genres: [],
     genreStrict: false,
+    enrichDeezer: true,
+    enrichMusicbrainz: true,
+    enrichItunes: true,
+    enrichSpotify: false,
+    enrichSoundcloud: false,
+    enrichAcoustid: false,
+    hasSpotify: false,
+    hasAcoustid: false,
   },
+
+  references: {},
+  enriching: false,
+  enrichProgress: null,
 
   aiRunning: false,
   aiProgress: null,
@@ -331,9 +393,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   reviewOpen: false,
 
   writing: false,
-  writeResult: null,
+  toasts: [],
   lastWrite: null,
   writeConfirmOpen: false,
+  healthOpen: false,
 
   setlist: [],
   setlistOpen: false,
@@ -442,6 +505,59 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   mode: "library",
   setMode: (mode) => set({ mode }),
 
+  groupBy: "none",
+  setGroupBy: (g) => set({ groupBy: g }),
+  colFiltersOpen: false,
+  setColFiltersOpen: (open) => set({ colFiltersOpen: open }),
+  hiddenCols: loadHiddenCols(),
+  toggleHiddenCol: (key) =>
+    set((state) => {
+      const next = state.hiddenCols.includes(key)
+        ? state.hiddenCols.filter((k) => k !== key)
+        : [...state.hiddenCols, key];
+      saveHiddenCols(next);
+      return { hiddenCols: next };
+    }),
+  showAllCols: () => {
+    saveHiddenCols([]);
+    set({ hiddenCols: [] });
+  },
+
+  sort: null,
+  setSort: (sort) => set({ sort }),
+  colFilters: {},
+  setColFilters: (colFilters) => set({ colFilters }),
+  savedViews: loadSavedViews(),
+  saveCurrentView: (name) => {
+    const st = get();
+    const view: SavedView = {
+      name,
+      filter: st.filter,
+      lens: st.lens,
+      sort: st.sort,
+      colFilters: st.colFilters,
+    };
+    const next = [...st.savedViews.filter((v) => v.name !== name), view];
+    saveSavedViews(next);
+    set({ savedViews: next });
+  },
+  applyView: (v) => {
+    const hasFilters = v.colFilters && Object.values(v.colFilters).some((x) => x.trim() !== "");
+    set({
+      filter: v.filter,
+      lens: v.lens,
+      sort: v.sort,
+      colFilters: v.colFilters ?? {},
+      colFiltersOpen: hasFilters ? true : get().colFiltersOpen,
+    });
+    saveView({ filter: v.filter, lens: v.lens });
+  },
+  deleteView: (name) => {
+    const next = get().savedViews.filter((v) => v.name !== name);
+    saveSavedViews(next);
+    set({ savedViews: next });
+  },
+
   setFilter: (value) => {
     set({ filter: value });
     saveView({ filter: value, lens: get().lens });
@@ -459,6 +575,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           return row;
         }
         const edited: TrackTags = { ...row.edited, [key]: coerce(key, raw) };
+        return { ...row, edited, status: statusFor({ ...row, edited }) };
+      }),
+    }));
+  },
+
+  setCells: (updates) => {
+    if (updates.length === 0) {
+      return;
+    }
+    const byRow = new Map<string, { key: TagKey; raw: string }[]>();
+    for (const u of updates) {
+      const list = byRow.get(u.rowId) ?? [];
+      list.push({ key: u.key, raw: u.raw });
+      byRow.set(u.rowId, list);
+    }
+    set((state) => ({
+      ...historyPatch(state),
+      rows: state.rows.map((row) => {
+        const ups = byRow.get(row.id);
+        if (!ups) {
+          return row;
+        }
+        let edited: TrackTags = { ...row.edited };
+        for (const { key, raw } of ups) {
+          edited = { ...edited, [key]: coerce(key, raw) };
+        }
         return { ...row, edited, status: statusFor({ ...row, edited }) };
       }),
     }));
@@ -586,7 +728,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ globalError: "Selecione faixas com título para renomear." });
       return;
     }
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     let ok = 0;
     let failed = 0;
     for (const row of targets) {
@@ -602,7 +744,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         failed += 1;
       }
     }
-    set({ writing: false, writeResult: { ok, failed, backupPath: "renomeação no disco" } });
+    set({ writing: false });
+    get().pushToast({
+      kind: failed > 0 ? "error" : "success",
+      message: `Renomeado: ${ok} ok${failed > 0 ? `, ${failed} falhou` : ""}`,
+    });
   },
 
   setSelection: (keys) => set({ selection: keys }),
@@ -628,6 +774,91 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ config });
   },
 
+  runEnrich: async () => {
+    const { rows, selection } = get();
+    let targets: TrackRow[];
+    if (selection.size > 0) {
+      const ids = new Set<string>();
+      for (const key of selection) {
+        const sep = key.indexOf("::");
+        if (sep > 0) ids.add(key.slice(0, sep));
+      }
+      targets = rows.filter((r) => ids.has(r.id) && !r.error);
+    } else {
+      targets = rows.filter((r) => !r.error);
+    }
+    if (targets.length === 0) {
+      set({ aiError: "Selecione faixas para enriquecer (ou carregue a biblioteca)." });
+      return;
+    }
+    set({ enriching: true, aiError: null, enrichProgress: { done: 0, total: targets.length } });
+    try {
+      const byId = new Map<string, api.Enrichment>();
+      let done = 0;
+      for (const part of chunk(targets, 15)) {
+        const inputs = part.map((r) => ({
+          id: r.id,
+          title: r.edited.title,
+          artist: r.edited.artist,
+          filePath: r.filePath,
+          durationSecs: r.durationSecs,
+        }));
+        const res = await api.enrichTracks(inputs);
+        for (const e of res) byId.set(e.id, e);
+        done += part.length;
+        set({ enrichProgress: { done, total: targets.length } });
+      }
+      const refs: Record<string, string> = { ...get().references };
+      set((state) => ({
+        ...historyPatch(state),
+        enriching: false,
+        enrichProgress: null,
+        rows: state.rows.map((row) => {
+          const e = byId.get(row.id);
+          if (!e) return row;
+          const parts: string[] = [];
+          if (e.title) parts.push(`título=${e.title}`);
+          if (e.artist) parts.push(`artista=${e.artist}`);
+          if (e.album) parts.push(`álbum=${e.album}`);
+          if (e.year != null) parts.push(`ano=${e.year}`);
+          if (e.bpm != null) parts.push(`bpm=${e.bpm}`);
+          if (e.genre) parts.push(`gênero=${e.genre}`);
+          if (e.sources.length > 0) parts.push(`fontes: ${e.sources.join(", ")}`);
+          if (parts.length > 0) refs[row.id] = parts.join("; ");
+          // Factual fields become reviewable suggestions (only when they add info).
+          const sug: Partial<TrackTags> = { ...(row.suggested ?? {}) };
+          let changed = false;
+          if (e.bpm != null && row.edited.bpm !== e.bpm) {
+            sug.bpm = e.bpm;
+            changed = true;
+          }
+          if (e.year != null && row.edited.year !== e.year) {
+            sug.year = e.year;
+            changed = true;
+          }
+          if (e.album && row.edited.album.trim() === "") {
+            sug.album = e.album;
+            changed = true;
+          }
+          if (e.genre && row.edited.genre.trim() === "") {
+            sug.genre = e.genre;
+            changed = true;
+          }
+          if (!changed) return row;
+          return { ...row, suggested: sug, status: "pending_approval" };
+        }),
+      }));
+      set({ references: refs });
+      get().pushToast({
+        kind: "info",
+        message: `Enriquecidas ${byId.size} faixa(s)`,
+        detail: "Fatos viraram sugestões (revise) e passam a alimentar a IA.",
+      });
+    } catch (err) {
+      set({ enriching: false, enrichProgress: null, aiError: String(err) });
+    }
+  },
+
   runAi: async () => {
     const { rows, selection, config } = get();
     const { perRow, fields } = buildAiTargets(selection);
@@ -651,7 +882,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       let done = 0;
       for (const part of chunk(targetRows, AI_CHUNK)) {
         const res = await api.tagWithAi({
-          tracks: part.map(toAiInput),
+          tracks: part.map((r) => toAiInput(r, get().references)),
           fields,
           charLimit: config.charLimit,
         });
@@ -733,7 +964,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           return row;
         }
         let edited: TrackTags = { ...row.edited };
-        for (const field of AI_FIELDS) {
+        for (const field of Object.keys(row.suggested) as TagKey[]) {
           const value = row.suggested[field];
           if (value !== undefined) {
             edited = { ...edited, [field]: value };
@@ -764,12 +995,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     // Pre-write tags (== current originals) let us restore the UI on undo.
     const snapshot = dirty.map((r) => ({ filePath: r.filePath, tags: { ...r.original } }));
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     try {
       const outcome = await api.writeTags(
         dirty.map((r) => ({ filePath: r.filePath, tags: r.edited })),
       );
       const okPaths = new Set(outcome.results.filter((x) => x.ok).map((x) => x.filePath));
+      const okCount = outcome.results.filter((x) => x.ok).length;
+      const failedCount = outcome.results.filter((x) => !x.ok).length;
       set((state) => ({
         writing: false,
         rows: state.rows.map((row) =>
@@ -777,13 +1010,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             ? { ...row, original: { ...row.edited }, status: "pristine" }
             : row,
         ),
-        writeResult: {
-          ok: outcome.results.filter((x) => x.ok).length,
-          failed: outcome.results.filter((x) => !x.ok).length,
-          backupPath: outcome.backupPath,
-        },
         lastWrite: { backupPath: outcome.backupPath, snapshot },
       }));
+      get().pushToast({
+        kind: failedCount > 0 ? "error" : "success",
+        message: `Gravado: ${okCount} ok${failedCount > 0 ? `, ${failedCount} falhou` : ""}`,
+        detail: `backup: ${outcome.backupPath}`,
+      });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }
@@ -808,15 +1041,23 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
           return { ...row, original: { ...tags }, edited: { ...tags }, suggested: null, status: "pristine" };
         }),
-        writeResult: { ok: last.snapshot.length, failed: 0, backupPath: last.backupPath },
       }));
+      get().pushToast({
+        kind: "success",
+        message: `Desfeito: ${last.snapshot.length} faixa(s) restaurada(s)`,
+      });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }
   },
 
-  clearWriteResult: () => set({ writeResult: null }),
+  pushToast: (toast) => {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }));
+  },
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setWriteConfirmOpen: (open) => set({ writeConfirmOpen: open }),
+  setHealthOpen: (open) => set({ healthOpen: open }),
 
   setSetlistOpen: (open) => set({ setlistOpen: open }),
 
@@ -1007,7 +1248,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!row) {
       return;
     }
-    set({ writing: true, globalError: null, writeResult: null });
+    set({ writing: true, globalError: null });
     try {
       let cues = cuesByRow[rowId];
       if (!cues) {
@@ -1016,7 +1257,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         set((state) => ({ cuesByRow: { ...state.cuesByRow, [rowId]: structure.cues } }));
       }
       const backupPath = await api.writeSeratoCues(row.filePath, cues);
-      set({ writing: false, writeResult: { ok: 1, failed: 0, backupPath } });
+      set({ writing: false });
+      get().pushToast({ kind: "success", message: "Cues gravados no Serato", detail: `backup: ${backupPath}` });
     } catch (err) {
       set({ writing: false, globalError: String(err) });
     }
